@@ -1,0 +1,30 @@
+{
+  "name": "salesforce-data-copier",
+  "version": "1.0.0",
+  "description": "Herramienta para copiar datos entre organizaciones de Salesforce.",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/main.js",
+    "dev": "ts-node src/main.ts"
+  },
+  "keywords": ["salesforce", "data", "migration"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "chalk": "^5.4.1",
+    "commander": "^14.0.0",
+    "csv-parse": "^5.6.0",
+    "csv-stringify": "^6.5.2",
+    "inquirer": "^12.6.3",
+    "jsforce": "^3.8.2",
+    "ora": "^8.2.0",
+    "winston": "^3.17.0"
+  },
+  "devDependencies": {
+    "@types/inquirer": "^9.0.7",
+    "@types/node": "^20.12.12",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  }
+}
