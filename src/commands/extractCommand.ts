@@ -1,8 +1,8 @@
 // src/commands/extractCommand.ts
-import { getSalesforceConnection } from '../core/auth';
-import { loadConfig, getOrgDataDir, ensureDir } from '../core/fileManager';
-import { logger } from '../core/logger';
-import { CommandOptions } from '../core/typeDefs';
+import { getSalesforceConnection } from '../core/auth.js';
+import { loadConfig, getOrgDataDir, ensureDir } from '../core/fileManager.js';
+import { logger } from '../core/logger.js';
+import { CommandOptions } from '../core/typeDefs.js';
 import ora from 'ora';
 import path from 'path';
 import { createWriteStream } from 'fs';
@@ -40,7 +40,7 @@ export async function extractCommand(options: CommandOptions) {
 
     spinner.start(`Ejecutando consulta y extrayendo datos para '${mainObjectName}'...`);
 
-    const recordStream = conn.bulk.query(options.query).stream();
+    const recordStream = (await conn.bulk.query(options.query)).stream();
     const csvStringifier = stringify({ header: true });
     const fileWriteStream = createWriteStream(outputFile);
     
@@ -52,7 +52,7 @@ export async function extractCommand(options: CommandOptions) {
     recordStream.on('end', () => {
         spinner.succeed(`Extracción completada. ${recordCount} registros guardados en ${outputFile}`);
     });
-    recordStream.on('error', (err) => {
+    recordStream.on('error', (err: Error) => {
         spinner.fail(`Error durante la extracción: ${err.message}`);
     });
 
@@ -61,7 +61,7 @@ export async function extractCommand(options: CommandOptions) {
 
   } catch (error) {
     spinner.fail('La extracción ha fallado.');
-    logger.error(error.message);
+    logger.error((error as Error).message);
     process.exit(1);
   }
 }

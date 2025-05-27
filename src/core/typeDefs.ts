@@ -29,12 +29,12 @@ export interface SObjectDescribe {
   name: string;
   fields: {
     name: string;
-    type: 'string' | 'reference' | 'boolean' | 'int' | 'double' | 'date' | 'datetime' | 'picklist' | 'id';
+    type: string;
     updateable: boolean;
     createable: boolean;
     nillable: boolean;
-    relationshipName: string | null;
-    referenceTo: string[] | null;
+    relationshipName: string | null | undefined;
+    referenceTo: string[] | null | undefined;
   }[];
 }
 

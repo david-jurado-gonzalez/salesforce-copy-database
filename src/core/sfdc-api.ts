@@ -1,6 +1,6 @@
 // src/core/sfdc-api.ts
 import { Connection } from 'jsforce';
-import { SObjectDescribe } from './typeDefs';
+import { SObjectDescribe } from './typeDefs.js';
 
 /**
  * Obtiene la descripción de metadatos de un SObject.

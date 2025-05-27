@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { logger } from './logger';
-import { AppConfig, IdMap } from './typeDefs';
+import { logger } from './logger.js';
+import { AppConfig, IdMap } from './typeDefs.js';
 
 /**
  * Este módulo se encarga de toda la interacción con el sistema de ficheros. 
@@ -84,7 +84,7 @@ export async function ensureDir(dirPath: string): Promise<void> {
     await fs.mkdir(dirPath, { recursive: true });
     logger.debug(`Directorio asegurado: ${dirPath}`);
   } catch (error) {
-    logger.error(`Error crítico al asegurar la existencia del directorio ${dirPath}: ${error.message}`);
+    logger.error(`Error crítico al asegurar la existencia del directorio ${dirPath}: ${(error as Error).message}`);
     // Este es un error grave, por lo que lo relanzamos para detener la ejecución.
     throw error;
   }
@@ -101,12 +101,12 @@ export async function loadConfig(configPath: string): Promise<AppConfig> {
     const rawData = await fs.readFile(configPath, 'utf-8');
     return JSON.parse(rawData) as AppConfig;
   } catch (error) {
-    if (error.code === 'ENOENT') {
+    if ((error as any).code === 'ENOENT') {
       logger.error(`Archivo de configuración no encontrado en la ruta especificada: ${configPath}`);
     } else if (error instanceof SyntaxError) {
       logger.error(`El archivo de configuración en ${configPath} contiene JSON inválido: ${error.message}`);
     } else {
-      logger.error(`No se pudo cargar o parsear el archivo de configuración en ${configPath}: ${error.message}`);
+      logger.error(`No se pudo cargar o parsear el archivo de configuración en ${configPath}: ${(error as Error).message}`);
     }
     throw new Error('No se pudo cargar la configuración.');
   }
@@ -152,12 +152,12 @@ export async function readIdMap(orgAlias: string, objectName: string): Promise<I
     return await readJsonFile<IdMap>(mapPath);
   } catch (error) {
     // Es normal que el archivo no exista para el primer objeto o si no tuvo inserciones.
-    if (error.code === 'ENOENT') {
+    if ((error as any).code === 'ENOENT') {
       logger.debug(`No se encontró el mapa de IDs para '${objectName}', se devolverá un mapa vacío.`);
       return {};
     }
     // Para cualquier otro error, sí es un problema.
-    logger.error(`Error al leer el archivo de mapa ${mapPath}: ${error.message}`);
+    logger.error(`Error al leer el archivo de mapa ${mapPath}: ${(error as Error).message}`);
     throw error;
   }
 }
@@ -205,11 +205,11 @@ export async function getObjectListFromDataDir(sourceAlias: string): Promise<str
         logger.info(`Objetos detectados en el directorio de datos: ${csvFiles.join(', ')}`);
         return csvFiles;
     } catch (error) {
-        if (error.code === 'ENOENT') {
+        if ((error as any).code === 'ENOENT') {
             logger.error(`El directorio de datos para el alias de origen '${sourceAlias}' no existe: ${dataDir}`);
             throw new Error(`Directorio de datos no encontrado para '${sourceAlias}'. ¿Ejecutaste el comando 'extract' primero?`);
         }
-        logger.error(`No se pudo leer el directorio de datos para '${sourceAlias}': ${error.message}`);
+        logger.error(`No se pudo leer el directorio de datos para '${sourceAlias}': ${(error as Error).message}`);
         throw error;
     }
 }

@@ -2,8 +2,8 @@
 
 // src/main.ts
 import { Command } from 'commander';
-import { extractCommand } from './commands/extractCommand';
-import { deployCommand } from './commands/deployCommand';
+import { extractCommand } from './commands/extractCommand.js';
+import { deployCommand } from './commands/deployCommand.js';
 // import { listObjectsCommand } from './commands/listObjectsCommand';
 
 const program = new Command();

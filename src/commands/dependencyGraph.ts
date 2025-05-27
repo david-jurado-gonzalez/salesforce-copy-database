@@ -1,5 +1,5 @@
-import { SObjectDescribe } from './typeDefs';
-import { logger } from './logger';
+import { SObjectDescribe } from '../core/typeDefs.js';
+import { logger } from '../core/logger.js';
 
 /**
  * Este módulo es una de las piezas más "inteligentes" de la herramienta. Su responsabilidad es 

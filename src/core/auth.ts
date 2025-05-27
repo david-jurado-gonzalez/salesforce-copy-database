@@ -3,8 +3,8 @@ import { Connection } from 'jsforce';
 import path from 'path';
 import fs from 'fs/promises';
 import os from 'os';
-import { logger } from './logger';
-import { AppConfig, OrgConfig } from './typeDefs';
+import { logger } from './logger.js';
+import { AppConfig, OrgConfig } from './typeDefs.js';
 
 /**
  * Obtiene una conexión de Salesforce, priorizando los alias de VS Code/SFDX.
@@ -19,7 +19,7 @@ export async function getSalesforceConnection(alias: string, config: AppConfig):
     logger.info(`Conexión establecida para el alias '${alias}' usando credenciales locales de SFDX.`);
     return conn;
   } catch (sfdxError) {
-    logger.debug(`No se pudo conectar con el alias SFDX '${alias}': ${sfdxError.message}`);
+    logger.debug(`No se pudo conectar con el alias SFDX '${alias}': ${(sfdxError as Error).message}`);
     // Si falla, se pasa al siguiente método.
   }
 
@@ -32,7 +32,7 @@ export async function getSalesforceConnection(alias: string, config: AppConfig):
       logger.info(`Conexión establecida para el alias '${alias}' usando credenciales del archivo de configuración.`);
       return conn;
     } catch (configError) {
-      logger.error(`Fallo al iniciar sesión con las credenciales de config.json para el alias '${alias}': ${configError.message}`);
+      logger.error(`Fallo al iniciar sesión con las credenciales de config.json para el alias '${alias}': ${(configError as Error).message}`);
       throw configError;
     }
   }
@@ -68,7 +68,7 @@ async function connectWithSfdxAlias(alias: string): Promise<Connection> {
 
     return conn;
   } catch (error) {
-    if (error.code === 'ENOENT') {
+    if ((error as any).code === 'ENOENT') {
       throw new Error(`El archivo de estado para el alias '${alias}' no se encontró en ${sfdxDir}.`);
     }
     throw error;

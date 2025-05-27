@@ -1,5 +1,5 @@
-import { CommandOptions, AppConfig, IdMap, SObjectDescribe } from '../core/typeDefs';
-import { getSalesforceConnection } from '../core/auth';
+import { CommandOptions, AppConfig, IdMap, SObjectDescribe } from '../core/typeDefs.js';
+import { getSalesforceConnection } from '../core/auth.js';
 import {
   loadConfig,
   getOrgDataDir,
@@ -10,11 +10,11 @@ import {
   writeIdMap,
   writeErrorLog,
   getObjectListFromDataDir,
-} from '../core/fileManager';
-import { logger } from '../core/logger';
-import { describeSObject } from '../core/sfdc-api';
-import { DependencyGraph } from '../core/dependencyGraph';
-import { Connection, RecordResult } from 'jsforce';
+} from '../core/fileManager.js';
+import { logger } from '../core/logger.js';
+import { describeSObject } from '../core/sfdc-api.js';
+import { DependencyGraph } from './dependencyGraph.js';
+import { Connection } from 'jsforce';
 import ora from 'ora';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
@@ -112,7 +112,7 @@ export async function deployCommand(options: CommandOptions): Promise<void> {
 
   } catch (error) {
     spinner.fail('El despliegue ha fallado.');
-    logger.error(error.message);
+    logger.error((error as Error).message);
     process.exit(1);
   }
 }
@@ -165,7 +165,7 @@ async function runDependencyAnalysis(context: DeploymentContext, objectsToDeploy
   const describePromises = objectsToDeploy.map(obj => describeSObject(context.sourceConn, obj));
   const descriptions = await Promise.all(describePromises);
 
-  descriptions.forEach(desc => graph.addNode(desc.name, desc));
+  descriptions.forEach((desc: SObjectDescribe) => graph.addNode(desc.name, desc));
   objectsToDeploy.forEach(obj => graph.buildEdges(obj, new Set(objectsToDeploy)));
   
   const { order: deploymentOrder, cycles } = graph.topologicalSort();
@@ -236,7 +236,9 @@ async function processInsertPass(context: DeploymentContext, objectName: string,
   jobResults.forEach((result, i) => {
     const sourceId = recordsToInsert[i].Legacy_Source_Id__c || Object.keys(sourceRecords)[i];
     if (result.success) {
-      newIdMap[sourceId] = result.id;
+      if (result.id) {
+        newIdMap[sourceId] = result.id;
+      }
     } else {
       errors.push({ sourceRecord: sourceRecords[sourceId], error: result.errors.join(', ') });
     }
@@ -288,7 +290,11 @@ function transformRecord(record: any, parentIdMaps: { [obj: string]: IdMap }): a
   const transformed: any = {};
   
   // Guardamos una referencia al ID de origen para poder mapear los resultados del bulk job
-  transformed.Legacy_Source_Id__c = record.Id;
+  // Guardamos una referencia al ID de origen para poder mapear los resultados del bulk job
+  // Aseguramos que 'Id' exista y sea una cadena antes de asignarlo
+  if (record.Id && typeof record.Id === 'string') {
+    transformed.Legacy_Source_Id__c = record.Id;
+  }
 
   for (const field in record) {
     if (field.endsWith('Id') && record[field]) { // Asumimos que los lookups terminan en 'Id'
