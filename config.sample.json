@@ -1,0 +1,15 @@
+{
+    "orgs": {
+      "mi-org-dev": {
+        "comment": "Este alias se buscará en SFDX. Si no se encuentra, se usarían las credenciales de abajo."
+      },
+      "mi-org-uat": {
+        "loginUrl": "https://test.salesforce.com",
+        "username": "user@uat.com",
+        "password": "MIPASSWORDCONTOKEN"
+      }
+    },
+    "jobConfig": {
+       "personAccountsEnabled": false
+    }
+  }
