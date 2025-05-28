@@ -14,7 +14,7 @@ Migrar datos entre entornos de Salesforce (ej: de Producción a una Sandbox, o e
   * **Análisis Automático de Dependencias:** Calcula el orden de despliegue correcto (ej: `Account` antes que `Contact`) analizando los metadatos de los objetos.
   * **Integración con Salesforce CLI:** Utiliza tus alias de `sfdx` o `sf` ya autenticados para una conexión segura y sin esfuerzo.
   * **Selección Inteligente de API:** Detecta automáticamente si una consulta SOQL contiene subconsultas y elige la API de Salesforce adecuada (Query API para subconsultas, Bulk API para consultas simples) para optimizar la extracción. Permite forzar el uso de una API específica con `--api-type`.
-  * **Manejo de Subconsultas (Padre-Hijo):** Cuando se usan subconsultas, la herramienta "desenrolla" los datos JSON anidados de la Query API en archivos CSV separados para objetos padre e hijo, manteniendo la vinculación de la relación (añadiendo el ID del padre al CSV del hijo).
+  * **Manejo de Subconsultas (Padre-Hijo):** Cuando se usan subconsultas, la herramienta "desenrolla" los datos JSON anidados de la Query API en archivos CSV separados para objetos padre e hijo. Para mantener la vinculación de la relación, se añade una columna artificial al CSV del objeto hijo con el patrón `NombreCampoRelacion` (ej. `AccountId`). Esta columna contiene el `Id` del registro padre de la organización de origen, siendo vital para el mapeo durante el despliegue.
   * **Despliegue en Dos Fases:** Maneja dependencias circulares o complejas mediante un proceso de inserción (`INSERT`) seguido de una actualización (`UPDATE`).
   * **Interfaz de Usuario Clara:** Ofrece feedback constante con indicadores de progreso, logs de colores y resúmenes de operación.
   * **Seguro por Defecto:** Pide confirmación antes de ejecutar operaciones que modifiquen datos en un entorno de destino.
@@ -250,7 +250,7 @@ node dist/src/main.js extract -s dev1 -q "SELECT Name, Phone, (SELECT LastName, 
 **Ficheros creados:**
 
   * `./workdir/dev1/data/Account.csv`
-  * `./workdir/dev1/data/Contacts.csv` (La herramienta "desenrolla" la subconsulta automáticamente, añadiendo la columna `AccountId` a `Contacts.csv`)
+  * `./workdir/dev1/data/Contacts.csv` (La herramienta "desenrolla" la subconsulta automáticamente, añadiendo la columna artificial `AccountId` para vincular los contactos con sus cuentas padre durante el despliegue)
 
 **Paso 2: Desplegar los datos en la sandbox**
 La herramienta se encargará de crear primero las Cuentas, guardar sus nuevos IDs, y luego asociar los Contactos a esas nuevas Cuentas.

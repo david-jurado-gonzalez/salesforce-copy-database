@@ -51,8 +51,19 @@ export interface SObjectDescribe {
     updateable: boolean;
     createable: boolean;
     nillable: boolean;
+    unique?: boolean; // Añadido para campos únicos
     relationshipName: string | null | undefined;
     referenceTo: string[] | null | undefined;
+  }[];
+  childRelationships?: { // La hacemos opcional por si alguna descripción no la trae, aunque debería
+    childSObject: string;
+    deprecatedAndHidden: boolean;
+    field: string;
+    junctionIdListNames: string[];
+    junctionReferenceTo: string[];
+    relationshipName: string | null | undefined;
+    cascadeDelete: boolean;
+    restrictedDelete: boolean;
   }[];
 }
 

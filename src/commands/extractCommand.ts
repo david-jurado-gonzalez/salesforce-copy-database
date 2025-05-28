@@ -49,12 +49,16 @@ export async function extractCommand(options: CommandOptions) {
     const dataDir = getOrgDataDir(sourceAlias);
     await ensureDir(dataDir);
     
-    // Extraemos el nombre del objeto principal de la query (simplificación)
-    const objectNameMatch = options.query.match(/FROM\s+(\w+)/i);
-    if (!objectNameMatch) {
+    // Extraemos el nombre del objeto principal de la query (el último FROM en la consulta)
+    // Esto es más robusto para subconsultas, ya que el último FROM siempre se refiere al objeto principal.
+    const fromClauses = options.query.split(/\bFROM\s+/i); // Divide por 'FROM ' (insensible a mayúsculas/minúsculas)
+    const lastFromClause = fromClauses[fromClauses.length - 1];
+    const mainObjectNameMatch = lastFromClause.match(/^(\w+)/); // Coincide con la primera palabra al principio de la última cláusula
+
+    if (!mainObjectNameMatch) {
       throw new Error("No se pudo determinar el objeto principal de la consulta SOQL.");
     }
-    const mainObjectName = objectNameMatch[1];
+    const mainObjectName = mainObjectNameMatch[1]; // Captura el nombre del objeto
     
     const queryHasSubquery = hasSubquery(options.query);
     let apiToUse: 'bulk' | 'rest';
@@ -91,7 +95,7 @@ export async function extractCommand(options: CommandOptions) {
     } else { // apiToUse === 'rest'
       // La lógica para la Query API (REST) se implementará en sfdc-api.ts
       // Aquí solo llamamos a la función y manejamos el resultado
-      const result = await extractDataQuery(conn, options.query, dataDir);
+      const result = await extractDataQuery(conn, options.query, dataDir, mainObjectName);
       spinner.succeed(`Extracción completada. Datos guardados en ${dataDir}.`);
       // Aquí podrías añadir más detalles sobre los archivos generados si es necesario
     }

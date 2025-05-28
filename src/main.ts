@@ -22,6 +22,7 @@ program
   .requiredOption('-s, --source <alias>', 'Alias de la organización de origen (de SFDX o config)')
   .requiredOption('-q, --query <soql>', 'La consulta SOQL para extraer los datos')
   .option('-c, --config <path>', 'Ruta al archivo de configuración', './config.json')
+  .option('--apiType <type>', 'Tipo de API a usar (auto, bulk, rest)', 'auto')
   .action(extractCommand);
 
 program
