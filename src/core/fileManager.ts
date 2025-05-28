@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { logger } from './logger.js';
 import { AppConfig, IdMap, OrgConfig, DEFAULT_ORG_CONFIG } from './typeDefs.js';
+import { Parser } from 'json2csv'; // Importar Parser de json2csv
 
 /**
  * Este módulo se encarga de toda la interacción con el sistema de ficheros. 
@@ -224,80 +225,105 @@ export async function writeJsonFile(filePath: string, data: object): Promise<voi
 }
 
 
+/**
+* Escribe un array de registros en un archivo CSV.
+* @param records Los registros a escribir.
+* @param filePath La ruta completa del archivo CSV de salida.
+*/
+export async function writeRecordsToCsv(records: any[], filePath: string): Promise<void> {
+ if (records.length === 0) {
+   logger.debug(`No hay registros para escribir en ${filePath}. Se omite la creación del archivo.`);
+   return;
+ }
+
+ try {
+   // Extraer los campos de los registros para usar como encabezados CSV
+   const fields = Object.keys(records[0]);
+   const json2csvParser = new Parser({ fields });
+   const csv = json2csvParser.parse(records);
+
+   await fs.writeFile(filePath, csv, 'utf-8');
+   logger.debug(`Registros escritos en CSV: ${filePath}`);
+ } catch (error) {
+   logger.error(`Error al escribir registros en CSV ${filePath}: ${(error as Error).message}`);
+   throw error;
+ }
+}
+
 // --- Funciones Especializadas para el Proyecto ---
 
 /**
- * Lee un archivo de mapeo de IDs para un objeto específico. Si el archivo no existe,
- * devuelve un objeto vacío, lo cual es un comportamiento esperado al procesar el primer
- * objeto de una dependencia.
- * @param orgAlias Alias de la organización de destino.
- * @param objectName Nombre del SObject (ej: 'Account').
- * @returns El mapa de IDs (`{ sourceId: targetId }`) o un objeto vacío.
- */
+* Lee un archivo de mapeo de IDs para un objeto específico. Si el archivo no existe,
+* devuelve un objeto vacío, lo cual es un comportamiento esperado al procesar el primer
+* objeto de una dependencia.
+* @param orgAlias Alias de la organización de destino.
+* @param objectName Nombre del SObject (ej: 'Account').
+* @returns El mapa de IDs (`{ sourceId: targetId }`) o un objeto vacío.
+*/
 export async function readIdMap(orgAlias: string, objectName: string): Promise<IdMap> {
-  const mapPath = path.join(getOrgMappingsDir(orgAlias), `${objectName}-map.json`);
-  try {
-    return await readJsonFile<IdMap>(mapPath);
-  } catch (error) {
-    // Es normal que el archivo no exista para el primer objeto o si no tuvo inserciones.
-    if ((error as any).code === 'ENOENT') {
-      logger.debug(`No se encontró el mapa de IDs para '${objectName}', se devolverá un mapa vacío.`);
-      return {};
-    }
-    // Para cualquier otro error, sí es un problema.
-    logger.error(`Error al leer el archivo de mapa ${mapPath}: ${(error as Error).message}`);
-    throw error;
-  }
+ const mapPath = path.join(getOrgMappingsDir(orgAlias), `${objectName}-map.json`);
+ try {
+   return await readJsonFile<IdMap>(mapPath);
+ } catch (error) {
+   // Es normal que el archivo no exista para el primer objeto o si no tuvo inserciones.
+   if ((error as any).code === 'ENOENT') {
+     logger.debug(`No se encontró el mapa de IDs para '${objectName}', se devolverá un mapa vacío.`);
+     return {};
+   }
+   // Para cualquier otro error, sí es un problema.
+   logger.error(`Error al leer el archivo de mapa ${mapPath}: ${(error as Error).message}`);
+   throw error;
+ }
 }
 
 /**
- * Escribe (o sobreescribe) un archivo de mapeo de IDs para un objeto.
- * @param orgAlias Alias de la organización de destino.
- * @param objectName Nombre del SObject.
- * @param map El mapa de IDs a guardar.
- */
+* Escribe (o sobreescribe) un archivo de mapeo de IDs para un objeto.
+* @param orgAlias Alias de la organización de destino.
+* @param objectName Nombre del SObject.
+* @param map El mapa de IDs a guardar.
+*/
 export async function writeIdMap(orgAlias: string, objectName: string, map: IdMap): Promise<void> {
-  const mapPath = path.join(getOrgMappingsDir(orgAlias), `${objectName}-map.json`);
-  await writeJsonFile(mapPath, map);
-  logger.debug(`Mapa de IDs para '${objectName}' guardado con ${Object.keys(map).length} entradas.`);
+ const mapPath = path.join(getOrgMappingsDir(orgAlias), `${objectName}-map.json`);
+ await writeJsonFile(mapPath, map);
+ logger.debug(`Mapa de IDs para '${objectName}' guardado con ${Object.keys(map).length} entradas.`);
 }
 
 /**
- * Escribe un log de errores para una operación específica.
- * @param orgAlias Alias de la organización de destino.
- * @param objectName Nombre del SObject.
- * @param errorType Un identificador para el log (ej: 'insert-errors', 'update-errors').
- * @param errors Un array de objetos de error para guardar.
- */
+* Escribe un log de errores para una operación específica.
+* @param orgAlias Alias de la organización de destino.
+* @param objectName Nombre del SObject.
+* @param errorType Un identificador para el log (ej: 'insert-errors', 'update-errors').
+* @param errors Un array de objetos de error para guardar.
+*/
 export async function writeErrorLog(orgAlias: string, objectName: string, errorType: string, errors: any[]): Promise<void> {
-  if (errors.length === 0) return;
-  const errorPath = path.join(getOrgErrorsDir(orgAlias), `${objectName}-${errorType}.json`);
-  await writeJsonFile(errorPath, errors);
-  logger.warn(`Se han registrado ${errors.length} errores para '${objectName}' en el fichero: ${errorPath}`);
+ if (errors.length === 0) return;
+ const errorPath = path.join(getOrgErrorsDir(orgAlias), `${objectName}-${errorType}.json`);
+ await writeJsonFile(errorPath, errors);
+ logger.warn(`Se han registrado ${errors.length} errores para '${objectName}' en el fichero: ${errorPath}`);
 }
 
 /**
- * Escanea el directorio de datos de una organización de origen y devuelve una lista
- * de los nombres de objeto basados en los ficheros .csv encontrados.
- * @param sourceAlias El alias de la organización de origen.
- * @returns Un array de strings con los nombres de los objetos.
- */
+* Escanea el directorio de datos de una organización de origen y devuelve una lista
+* de los nombres de objeto basados en los ficheros .csv encontrados.
+* @param sourceAlias El alias de la organización de origen.
+* @returns Un array de strings con los nombres de los objetos.
+*/
 export async function getObjectListFromDataDir(sourceAlias: string): Promise<string[]> {
-    const dataDir = getOrgDataDir(sourceAlias);
-    try {
-        const allFiles = await fs.readdir(dataDir);
-        const csvFiles = allFiles
-            .filter(file => file.toLowerCase().endsWith('.csv'))
-            .map(file => path.basename(file, '.csv')); // Quita la extensión .csv
-        
-        logger.info(`Objetos detectados en el directorio de datos: ${csvFiles.join(', ')}`);
-        return csvFiles;
-    } catch (error) {
-        if ((error as any).code === 'ENOENT') {
-            logger.error(`El directorio de datos para el alias de origen '${sourceAlias}' no existe: ${dataDir}`);
-            throw new Error(`Directorio de datos no encontrado para '${sourceAlias}'. ¿Ejecutaste el comando 'extract' primero?`);
-        }
-        logger.error(`No se pudo leer el directorio de datos para '${sourceAlias}': ${(error as Error).message}`);
-        throw error;
-    }
+   const dataDir = getOrgDataDir(sourceAlias);
+   try {
+       const allFiles = await fs.readdir(dataDir);
+       const csvFiles = allFiles
+           .filter(file => file.toLowerCase().endsWith('.csv'))
+           .map(file => path.basename(file, '.csv')); // Quita la extensión .csv
+       
+       logger.info(`Objetos detectados en el directorio de datos: ${csvFiles.join(', ')}`);
+       return csvFiles;
+   } catch (error) {
+       if ((error as any).code === 'ENOENT') {
+           logger.error(`El directorio de datos para el alias de origen '${sourceAlias}' no existe: ${dataDir}`);
+           throw new Error(`Directorio de datos no encontrado para '${sourceAlias}'. ¿Ejecutaste el comando 'extract' primero?`);
+       }
+       logger.error(`No se pudo leer el directorio de datos para '${sourceAlias}': ${(error as Error).message}`);
+       throw error;
+   }
 }

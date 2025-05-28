@@ -35,6 +35,7 @@ export interface CommandOptions {
   password?: string; // Para CLI
   loginUrl?: string; // Para CLI
   instanceUrl?: string; // Para CLI
+  apiType?: 'auto' | 'bulk' | 'rest'; // Nuevo parámetro para el tipo de API de extracción
 }
 
 // Interfaz para la descripción de un SObject de Salesforce

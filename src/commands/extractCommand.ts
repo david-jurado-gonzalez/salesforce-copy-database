@@ -3,9 +3,19 @@ import { getSalesforceConnection } from '../core/auth.js';
 import { loadConfig, getOrgDataDir, ensureDir } from '../core/fileManager.js';
 import { logger } from '../core/logger.js';
 import { CommandOptions, DEFAULT_ORG_CONFIG } from '../core/typeDefs.js';
+import { extractDataBulk, extractDataQuery } from '../core/sfdc-api.js'; // Importar nuevas funciones
 import ora from 'ora';
 import path from 'path';
 import { createWriteStream } from 'fs';
+
+// Función para detectar subconsultas en una cadena SOQL
+function hasSubquery(soql: string): boolean {
+  // Expresión regular para detectar patrones de subconsulta (SELECT ... FROM ...)
+  // Busca un paréntesis de apertura seguido de SELECT, luego cualquier cosa, luego FROM, luego cualquier cosa,
+  // y finalmente un paréntesis de cierre.
+  const subqueryRegex = /\(\s*SELECT\s+[^)]+\s+FROM\s+\w+\s*\)/i;
+  return subqueryRegex.test(soql);
+}
 
 export async function extractCommand(options: CommandOptions) {
   logger.info(`--- Iniciando Extracción de Datos ---`);
@@ -45,27 +55,46 @@ export async function extractCommand(options: CommandOptions) {
       throw new Error("No se pudo determinar el objeto principal de la consulta SOQL.");
     }
     const mainObjectName = objectNameMatch[1];
-    const outputFile = path.join(dataDir, `${mainObjectName}.csv`);
-
-    spinner.start(`Ejecutando consulta y extrayendo datos para '${mainObjectName}'...`);
-
-    const recordStream = (await conn.bulk.query(options.query)).stream();
-    const fileWriteStream = createWriteStream(outputFile);
     
-    let recordCount = 0;
-    recordStream.on('data', (data) => {
-        recordCount++;
-        spinner.text = `Procesando registros de '${mainObjectName}'... (${recordCount} encontrados)`;
-    });
-    recordStream.on('end', () => {
-        spinner.succeed(`Extracción completada. ${recordCount} registros guardados en ${outputFile}`);
-    });
-    recordStream.on('error', (err: Error) => {
-        spinner.fail(`Error durante la extracción: ${err.message}`);
-    });
+    const queryHasSubquery = hasSubquery(options.query);
+    let apiToUse: 'bulk' | 'rest';
 
-    // Pipe para dirigir los datos de la query al archivo CSV
-    recordStream.pipe(fileWriteStream);
+    if (options.apiType === 'bulk') {
+      if (queryHasSubquery) {
+        spinner.warn('La consulta contiene subconsultas, pero se ha forzado el uso de la API Bulk. Esto probablemente fallará.');
+      }
+      apiToUse = 'bulk';
+    } else if (options.apiType === 'rest') {
+      apiToUse = 'rest';
+    } else { // apiType es 'auto' o no está definido
+      apiToUse = queryHasSubquery ? 'rest' : 'bulk';
+      spinner.info(`Detección automática: La consulta ${queryHasSubquery ? 'contiene subconsultas' : 'no contiene subconsultas'}. Se usará la API ${apiToUse.toUpperCase()}.`);
+    }
+
+    spinner.start(`Ejecutando consulta y extrayendo datos para '${mainObjectName}' usando la API ${apiToUse.toUpperCase()}...`);
+
+    if (apiToUse === 'bulk') {
+      const outputFile = path.join(dataDir, `${mainObjectName}.csv`);
+      const recordStream = await extractDataBulk(conn, options.query, outputFile);
+      
+      let recordCount = 0;
+      recordStream.on('data', (data: any) => { // Añadido tipo 'any' para evitar error implícito
+          recordCount++;
+          spinner.text = `Procesando registros de '${mainObjectName}'... (${recordCount} encontrados)`;
+      });
+      recordStream.on('end', () => {
+          spinner.succeed(`Extracción completada. ${recordCount} registros guardados en ${outputFile}`);
+      });
+      recordStream.on('error', (err: Error) => {
+          spinner.fail(`Error durante la extracción: ${err.message}`);
+      });
+    } else { // apiToUse === 'rest'
+      // La lógica para la Query API (REST) se implementará en sfdc-api.ts
+      // Aquí solo llamamos a la función y manejamos el resultado
+      const result = await extractDataQuery(conn, options.query, dataDir);
+      spinner.succeed(`Extracción completada. Datos guardados en ${dataDir}.`);
+      // Aquí podrías añadir más detalles sobre los archivos generados si es necesario
+    }
 
   } catch (error) {
     spinner.fail('La extracción ha fallado.');
