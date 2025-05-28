@@ -13,7 +13,8 @@ Migrar datos entre entornos de Salesforce (ej: de Producción a una Sandbox, o e
   * **Gestión Inteligente de Relaciones:** Mapea las relaciones entre registros sin necesidad de crear campos de "ID Externo" en tus objetos de Salesforce.
   * **Análisis Automático de Dependencias:** Calcula el orden de despliegue correcto (ej: `Account` antes que `Contact`) analizando los metadatos de los objetos.
   * **Integración con Salesforce CLI:** Utiliza tus alias de `sfdx` o `sf` ya autenticados para una conexión segura y sin esfuerzo.
-  * **Soporte para Consultas Complejas:** Extrae datos usando SOQL, incluyendo subconsultas de objetos hijos (formato `tree`).
+  * **Selección Inteligente de API:** Detecta automáticamente si una consulta SOQL contiene subconsultas y elige la API de Salesforce adecuada (Query API para subconsultas, Bulk API para consultas simples) para optimizar la extracción. Permite forzar el uso de una API específica con `--api-type`.
+  * **Manejo de Subconsultas (Padre-Hijo):** Cuando se usan subconsultas, la herramienta "desenrolla" los datos JSON anidados de la Query API en archivos CSV separados para objetos padre e hijo, manteniendo la vinculación de la relación (añadiendo el ID del padre al CSV del hijo).
   * **Despliegue en Dos Fases:** Maneja dependencias circulares o complejas mediante un proceso de inserción (`INSERT`) seguido de una actualización (`UPDATE`).
   * **Interfaz de Usuario Clara:** Ofrece feedback constante con indicadores de progreso, logs de colores y resúmenes de operación.
   * **Seguro por Defecto:** Pide confirmación antes de ejecutar operaciones que modifiquen datos en un entorno de destino.
@@ -168,6 +169,10 @@ Extrae datos de una organización de origen y los guarda localmente en formato C
 
   * `--source, -s`: El alias de la organización de origen (debe coincidir con un alias de SF CLI o una entrada en `config.json`).
   * `--query, -q`: La consulta SOQL a ejecutar. **Debe ir entre comillas.**
+  * `--api-type, -a`: (Opcional) Fuerza el tipo de API a usar para la extracción. Valores posibles:
+    * `auto` (por defecto): Detecta automáticamente si la consulta tiene subconsultas. Usa Query API si las hay, Bulk API si no.
+    * `bulk`: Fuerza el uso de la Bulk API. Fallará si la consulta tiene subconsultas.
+    * `rest`: Fuerza el uso de la Query API (REST API), útil para depuración o consultas pequeñas con subconsultas.
   * `--config, -c`: (Opcional) Ruta al fichero de configuración. Por defecto es `./config.json`. Si este archivo no existe, la herramienta intentará autenticarse usando el alias de SFDX o las credenciales proporcionadas por línea de comandos.
 
 ### `deploy`
@@ -222,18 +227,30 @@ node dist/src/main.js extract -s dev1 -q "SELECT Id, Name, Phone, Website, Indus
 Quieres mover un subconjunto de Cuentas de `dev1` y todos sus Contactos asociados a la sandbox `full-sandbox`.
 
 **Paso 1: Extraer los datos relacionados**
-Usamos una subconsulta para traer Cuentas y Contactos en un solo comando.
+Usamos una subconsulta para traer Cuentas y Contactos en un solo comando. La herramienta detectará automáticamente la subconsulta y usará la Query API.
 
 **Comando:**
 
 ```bash
-node dist/src/main.js extract -s dev1 -q "SELECT Name, Phone, (SELECT LastName, FirstName, Email, Phone FROM Contacts) FROM Account WHERE Type = 'Customer - Direct'"
+node dist/src/main.js extract -s dev1 -q "SELECT Name, Phone, (SELECT LastName, FirstName, Email, Phone FROM Contacts) FROM Account WHERE Type = 'Customer - Direct'" --api-type auto
+```
+
+**Resultado en la consola (Ejemplo):**
+
+```
+> info: --- Iniciando Extracción de Datos ---
+> ✓ Autenticado con https://mi-dominio.my.salesforce.com
+> > info: Detección automática: La consulta contiene subconsultas. Se usará la API REST.
+> ✓ Ejecutando consulta y extrayendo datos para 'Account' usando la API REST...
+> info: Registros de Account guardados en workdir/dev1/data/Account.csv
+> info: Registros de Contacts guardados en workdir/dev1/data/Contacts.csv
+> ✓ Extracción completada. Datos guardados en workdir/dev1/data.
 ```
 
 **Ficheros creados:**
 
   * `./workdir/dev1/data/Account.csv`
-  * `./workdir/dev1/data/Contact.csv` (La herramienta "desenrolla" la subconsulta automáticamente)
+  * `./workdir/dev1/data/Contacts.csv` (La herramienta "desenrolla" la subconsulta automáticamente, añadiendo la columna `AccountId` a `Contacts.csv`)
 
 **Paso 2: Desplegar los datos en la sandbox**
 La herramienta se encargará de crear primero las Cuentas, guardar sus nuevos IDs, y luego asociar los Contactos a esas nuevas Cuentas.
