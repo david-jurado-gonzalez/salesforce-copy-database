@@ -1,3 +1,5 @@
+console.log('--- DEBUG: src/core/logger.ts se está cargando ---'); // Añadir este log
+
 // src/core/logger.ts
 import winston from 'winston';
 import chalk from 'chalk';
@@ -30,7 +32,7 @@ export const logger = winston.createLogger({
 // y que usa un formato más amigable y con colores.
 logger.add(
   new winston.transports.Console({
-    level: 'info',
+    level: 'debug', // Cambiado de 'info' a 'debug'
     format: combine(colorize(), timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }), consoleFormat),
   })
 );

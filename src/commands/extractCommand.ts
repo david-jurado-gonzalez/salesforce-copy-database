@@ -9,7 +9,6 @@ import { createWriteStream } from 'fs';
 import { stringify } from 'csv-stringify';
 
 export async function extractCommand(options: CommandOptions) {
-  console.log('extractCommand ejecutándose...');
   logger.info(`--- Iniciando Extracción de Datos ---`);
   const spinner = ora('Cargando configuración...').start();
 
@@ -22,8 +21,6 @@ export async function extractCommand(options: CommandOptions) {
       target: options.target
     });
     const sourceAlias = options.source;
-
-    console.log('Opciones recibidas:', options);
 
     
     // Permitimos que no exista la org en config - se usará la org por defecto de SFDX

@@ -4,7 +4,10 @@
 import { Command } from 'commander';
 import { extractCommand } from './commands/extractCommand.js';
 import { deployCommand } from './commands/deployCommand.js';
+import { logger } from './core/logger.js'; // Importar logger
 // import { listObjectsCommand } from './commands/listObjectsCommand';
+
+logger.debug('Iniciando sfdc-data-copier...'); // Añadir este log al inicio
 
 const program = new Command();
 
