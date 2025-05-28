@@ -11,7 +11,7 @@ import {
     writeErrorLog, getObjectListFromDataDir
 } from '../../src/core/fileManager.js';
 import { logger } from '../../src/core/logger.js';
-import { AppConfig, IdMap } from '../../src/core/typeDefs.js';
+import { AppConfig, IdMap, DEFAULT_ORG_CONFIG } from '../../src/core/typeDefs.js';
 
 use(sinonChai);
 use(chaiAsPromised);
@@ -21,6 +21,7 @@ describe('FileManager Functions', () => {
     let loggerInfoStub: sinon.SinonStub;
     let loggerErrorStub: sinon.SinonStub;
     let loggerDebugStub: sinon.SinonStub;
+    let loggerWarnStub: sinon.SinonStub;
     let fsAccessStub: sinon.SinonStub;
     let fsMkdirStub: sinon.SinonStub;
     let fsWriteFileStub: sinon.SinonStub;
@@ -36,6 +37,7 @@ describe('FileManager Functions', () => {
         loggerInfoStub = sandbox.stub(logger, 'info');
         loggerErrorStub = sandbox.stub(logger, 'error');
         loggerDebugStub = sandbox.stub(logger, 'debug');
+        loggerWarnStub = sandbox.stub(logger, 'warn');
         fsAccessStub = sandbox.stub(fs, 'access');
         fsMkdirStub = sandbox.stub(fs, 'mkdir');
         fsWriteFileStub = sandbox.stub(fs, 'writeFile');
@@ -112,23 +114,74 @@ describe('FileManager Functions', () => {
             expect(config).to.deep.equal(mockConfig);
         });
 
-        it('should throw error if config file not found', async () => {
+        it('should return default config if no configPath provided', async () => {
+            const config = await loadConfig();
+            expect(config).to.deep.equal({ orgs: {} });
+        });
+
+        it('should return default config if file not found', async () => {
             fsReadFileStub.withArgs(configPath, 'utf-8').rejects({ code: 'ENOENT' });
-            await expect(loadConfig(configPath)).to.be.rejectedWith('No se pudo cargar la configuración.');
-            expect(loggerErrorStub).to.have.been.calledWith(`Archivo de configuración no encontrado en la ruta especificada: ${configPath}`);
+            const config = await loadConfig(configPath);
+            expect(config).to.deep.equal({ orgs: {} });
+            expect(loggerInfoStub).to.have.been.calledWith(`No se encontró archivo de configuración en ${configPath}, se usará configuración por defecto`);
         });
 
-        it('should throw error if config file has invalid JSON', async () => {
+        it('should return default config if file has invalid JSON', async () => {
             fsReadFileStub.withArgs(configPath, 'utf-8').resolves('invalid json');
-            await expect(loadConfig(configPath)).to.be.rejectedWith('No se pudo cargar la configuración.');
-            expect(loggerErrorStub).to.have.been.calledWith(sinon.match(`El archivo de configuración en ${configPath} contiene JSON inválido:`));
+            const config = await loadConfig(configPath);
+            expect(config).to.deep.equal({ orgs: {} });
+            expect(loggerErrorStub).to.have.been.calledWith(`El archivo de configuración en ${configPath} contiene JSON inválido, se usará configuración por defecto`);
         });
 
-        it('should throw generic error for other read failures', async () => {
-            const error = new Error('Read error');
-            fsReadFileStub.withArgs(configPath, 'utf-8').rejects(error);
-            await expect(loadConfig(configPath)).to.be.rejectedWith('No se pudo cargar la configuración.');
-            expect(loggerErrorStub).to.have.been.calledWith(`No se pudo cargar o parsear el archivo de configuración en ${configPath}: ${error.message}`);
+        it('should use CLI options for source org config', async () => {
+            const options = {
+                source: 'sourceOrg',
+                username: 'cliUser',
+                password: 'cliPass',
+                loginUrl: 'https://test.salesforce.com'
+            };
+
+            const config = await loadConfig(undefined, options);
+            expect(config.orgs[options.source]).to.deep.equal({
+                ...DEFAULT_ORG_CONFIG,
+                username: options.username,
+                password: options.password,
+                loginUrl: options.loginUrl
+            });
+        });
+
+        it('should use CLI options for target org config', async () => {
+            const options = {
+                target: 'targetOrg',
+                username: 'cliUser',
+                password: 'cliPass',
+                loginUrl: 'https://test.salesforce.com'
+            };
+
+            const config = await loadConfig(undefined, options);
+            expect(config.orgs[options.target]).to.deep.equal({
+                ...DEFAULT_ORG_CONFIG,
+                username: options.username,
+                password: options.password,
+                loginUrl: options.loginUrl
+            });
+        });
+
+        it('should merge file config with CLI options', async () => {
+            fsReadFileStub.withArgs(configPath, 'utf-8').resolves(JSON.stringify(mockConfig));
+            const options = {
+                source: 'newSource',
+                username: 'cliUser',
+                password: 'cliPass'
+            };
+
+            const config = await loadConfig(configPath, options);
+            expect(config.orgs).to.include(mockConfig.orgs);
+            expect(config.orgs[options.source]).to.deep.equal({
+                ...DEFAULT_ORG_CONFIG,
+                username: options.username,
+                password: options.password
+            });
         });
     });
 

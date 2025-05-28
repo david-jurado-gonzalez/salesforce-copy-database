@@ -1,15 +1,25 @@
 {
-    "orgs": {
-      "mi-org-dev": {
-        "comment": "Este alias se buscará en SFDX. Si no se encuentra, se usarían las credenciales de abajo."
-      },
-      "mi-org-uat": {
-        "loginUrl": "https://test.salesforce.com",
-        "username": "user@uat.com",
-        "password": "MIPASSWORDCONTOKEN"
-      }
+  "orgs": {
+    "dev1": {
+      "comment": "Este alias se resolverá usando la autenticación local de Salesforce CLI"
     },
-    "jobConfig": {
-       "personAccountsEnabled": false
+    "full-sandbox": {
+      "comment": "También usará el alias local de SF CLI"
+    },
+    "prod": {
+      "loginUrl": "https://login.salesforce.com",
+      "username": "admin@empresa.com",
+      "password": "mi-password-y-token",
+      "comment": "Ejemplo de configuración directa con credenciales"
+    },
+    "uat": {
+      "loginUrl": "https://test.salesforce.com",
+      "username": "user@empresa.com.uat",
+      "password": "mi-password-y-token-uat",
+      "comment": "Ejemplo de conexión a sandbox con credenciales"
     }
+  },
+  "jobConfig": {
+    "personAccountsEnabled": false
   }
+}

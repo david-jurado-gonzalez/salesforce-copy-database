@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { logger } from './logger.js';
-import { AppConfig, IdMap } from './typeDefs.js';
+import { AppConfig, IdMap, OrgConfig, DEFAULT_ORG_CONFIG } from './typeDefs.js';
 
 /**
  * Este módulo se encarga de toda la interacción con el sistema de ficheros. 
@@ -91,25 +91,87 @@ export async function ensureDir(dirPath: string): Promise<void> {
 }
 
 /**
- * Carga y parsea el archivo de configuración principal de la aplicación.
- * @param configPath Ruta al archivo `config.json`.
- * @returns El objeto de configuración parseado.
- * @throws Si el archivo no se encuentra o contiene JSON inválido.
+ * Crea una configuración por defecto para una organización.
+ * @param username Nombre de usuario opcional.
+ * @param password Contraseña opcional.
+ * @param loginUrl URL de login opcional.
+ * @returns Configuración por defecto para la organización.
  */
-export async function loadConfig(configPath: string): Promise<AppConfig> {
-  try {
-    const rawData = await fs.readFile(configPath, 'utf-8');
-    return JSON.parse(rawData) as AppConfig;
-  } catch (error) {
-    if ((error as any).code === 'ENOENT') {
-      logger.error(`Archivo de configuración no encontrado en la ruta especificada: ${configPath}`);
-    } else if (error instanceof SyntaxError) {
-      logger.error(`El archivo de configuración en ${configPath} contiene JSON inválido: ${error.message}`);
-    } else {
-      logger.error(`No se pudo cargar o parsear el archivo de configuración en ${configPath}: ${(error as Error).message}`);
+function createDefaultOrgConfig(username?: string, password?: string, loginUrl?: string): OrgConfig {
+  return {
+    ...DEFAULT_ORG_CONFIG,
+    ...(username && { username }),
+    ...(password && { password }),
+    ...(loginUrl && { loginUrl })
+  };
+}
+
+/**
+ * Carga y parsea el archivo de configuración principal de la aplicación.
+ * Si no se proporciona la ruta o el archivo no existe, retorna una configuración por defecto.
+ * @param configPath Ruta al archivo `config.json` (opcional).
+ * @param options Opciones adicionales de configuración desde CLI.
+ * @returns El objeto de configuración parseado o por defecto.
+ */
+export async function loadConfig(configPath?: string, options: {
+  username?: string;
+  password?: string;
+  loginUrl?: string;
+  source?: string;
+  target?: string;
+} = {}): Promise<AppConfig> {
+  let config: AppConfig = { orgs: {} };
+
+  // Intentar cargar la configuración del archivo si existe
+  if (configPath) {
+    try {
+      const rawData = await fs.readFile(configPath, 'utf-8');
+      config = JSON.parse(rawData) as AppConfig;
+      logger.debug('Archivo de configuración cargado correctamente');
+    } catch (error) {
+      if ((error as any).code === 'ENOENT') {
+        logger.info(`No se encontró archivo de configuración en ${configPath}, se usará configuración por defecto`);
+      } else if (error instanceof SyntaxError) {
+        logger.error(`El archivo de configuración en ${configPath} contiene JSON inválido, se usará configuración por defecto`);
+      } else {
+        logger.warn(`Error al cargar configuración desde ${configPath}, se usará configuración por defecto`);
+      }
     }
-    throw new Error('No se pudo cargar la configuración.');
   }
+
+  // Aplicar configuración por defecto a todas las organizaciones existentes
+  for (const [alias, orgConfig] of Object.entries(config.orgs)) {
+    config.orgs[alias] = {
+      ...DEFAULT_ORG_CONFIG,
+      ...orgConfig
+    };
+  }
+
+  // Procesar opciones CLI para org origen
+  if (options.source) {
+    config.orgs[options.source] = {
+      ...config.orgs[options.source], // Preservar configuración existente si la hay
+      ...createDefaultOrgConfig(
+        options.username,
+        options.password,
+        options.loginUrl
+      )
+    };
+  }
+
+  // Procesar opciones CLI para org destino
+  if (options.target) {
+    config.orgs[options.target] = {
+      ...config.orgs[options.target], // Preservar configuración existente si la hay
+      ...createDefaultOrgConfig(
+        options.username,
+        options.password,
+        options.loginUrl
+      )
+    };
+  }
+
+  return config;
 }
 
 /**

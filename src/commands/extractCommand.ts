@@ -16,8 +16,9 @@ export async function extractCommand(options: CommandOptions) {
     const config = await loadConfig(options.config);
     const sourceAlias = options.source;
 
-    if (!config.orgs[sourceAlias]) {
-      throw new Error(`El alias de origen '${sourceAlias}' no está definido en el archivo de configuración.`);
+    // Permitimos que no exista la org en config - se usará la org por defecto de SFDX
+    if (!config.orgs) {
+      config.orgs = {};
     }
     if (!options.query) {
       throw new Error("La opción '--query' es obligatoria para la extracción.");

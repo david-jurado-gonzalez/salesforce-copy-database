@@ -145,15 +145,25 @@ describe('extractCommand', () => {
         rewiremock.disable(); // Disable rewiremock
     });
 
-    it('should throw error if source alias is not in config', async () => {
+    it('should attempt to use default org if source alias is not in config', async () => {
         const options: CommandOptions = { source: 'nonExistentOrg', query: 'SELECT Id FROM Account', config: 'config.json' };
         loadConfigStub.resolves({ orgs: {} }); // No orgs defined
-        await expect(extractCommandModule.extractCommand(options)).to.be.rejectedWith(
-            `El alias de origen 'nonExistentOrg' no está definido en el archivo de configuración.`
-        );
-        expect(loggerErrorStub).to.have.been.calledOnce;
-        expect(spinnerFailStub).to.have.been.calledOnce;
-        expect(processExitStub).to.have.been.calledWith(1);
+
+        const mockBulkQueryStream = new EventEmitter();
+        (mockBulkQueryStream as any).pipe = sandbox.stub().returnsThis();
+        connBulkQueryStub.resolves({ stream: () => mockBulkQueryStream });
+
+        const extractPromise = extractCommandModule.extractCommand(options);
+
+        // Simulate successful extraction
+        mockBulkQueryStream.emit('data', { Id: '001', Name: 'Test1' });
+        mockBulkQueryStream.emit('end');
+
+        await extractPromise;
+
+        expect(getSalesforceConnectionStub).to.have.been.calledOnceWith('nonExistentOrg', { orgs: {} });
+        expect(spinnerFailStub).to.not.have.been.called;
+        expect(processExitStub).to.not.have.been.called;
     });
 
     it('should throw error if --query option is missing', async () => {

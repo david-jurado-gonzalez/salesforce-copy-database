@@ -51,15 +51,44 @@ Antes de empezar, asegúrate de tener instalado:
 
 ## ⚙️ Configuración
 
-La herramienta utiliza un fichero `config.json` en la raíz del proyecto para definir los alias y configuraciones del trabajo. Puedes copiar `config.sample.json` para empezar.
+La herramienta ofrece un sistema flexible de configuración con valores por defecto, que se pueden sobrescribir mediante un fichero `config.json` o argumentos de línea de comandos.
 
-**`config.json`:**
+### Orden de Precedencia
+
+La configuración se aplica en el siguiente orden (de mayor a menor prioridad):
+1. Argumentos de línea de comandos
+2. Configuración en `config.json`
+3. Valores por defecto del sistema
+
+### Configuración por Defecto
+
+Los siguientes valores se utilizan si no se especifica lo contrario:
+
+```json
+{
+  "orgs": {
+    "default": {
+      "loginUrl": "https://test.salesforce.com",
+      "instanceUrl": null,
+      "username": null,
+      "password": null
+    }
+  },
+  "jobConfig": {
+    "personAccountsEnabled": false
+  }
+}
+```
+
+### Fichero de Configuración
+
+Crea un fichero `config.json` en la raíz del proyecto (puedes copiar `config.sample.json` como punto de partida):
 
 ```json
 {
   "orgs": {
     "dev1": {
-      "comment": "Este alias se resolverá usando la autenticación local de Salesforce CLI. No se necesitan credenciales aquí."
+      "comment": "Este alias se resolverá usando la autenticación local de Salesforce CLI."
     },
     "full-sandbox": {
       "comment": "Este también usará el alias local de SF CLI."
@@ -76,7 +105,55 @@ La herramienta utiliza un fichero `config.json` en la raíz del proyecto para de
 }
 ```
 
-La herramienta priorizará siempre la **autenticación vía alias de Salesforce CLI**. Solo si no encuentra un alias local que coincida con el nombre en `config.json`, intentará usar el `username` y `password` (si se proporcionan).
+### Configuración de Organizaciones
+
+Cada entrada en `orgs` puede contener:
+
+- **loginUrl** (opcional): URL de login de Salesforce. Por defecto: `https://test.salesforce.com`
+- **instanceUrl** (opcional): URL de la instancia. Se configura automáticamente tras el login
+- **username** (opcional): Nombre de usuario de Salesforce
+- **password** (opcional): Contraseña + token de seguridad
+
+La herramienta sigue este proceso de autenticación:
+
+1. Intenta usar el **alias de Salesforce CLI** si existe localmente
+2. Si no encuentra el alias, busca credenciales en `config.json`
+3. Si no encuentra credenciales, usa los valores por defecto
+
+### Configuración del Job
+
+El objeto `jobConfig` permite configurar el comportamiento global:
+
+- **personAccountsEnabled** (opcional): Activa el soporte para Person Accounts. Por defecto: `false`
+
+### Ejemplos de Configuración
+
+1. **Configuración Mínima** - Solo alias de CLI:
+```json
+{
+  "orgs": {
+    "dev1": {},
+    "sandbox": {}
+  }
+}
+```
+
+2. **Configuración Mixta** - CLI y credenciales:
+```json
+{
+  "orgs": {
+    "dev1": {},
+    "prod": {
+      "loginUrl": "https://login.salesforce.com",
+      "username": "admin@empresa.com",
+      "password": "password+token"
+    }
+  },
+  "jobConfig": {
+    "personAccountsEnabled": true
+  }
+}
+```
 
 ## 💻 Uso y Comandos
 
@@ -230,7 +307,7 @@ npm start -- list-objects -t full-sandbox
   * **Logs de depuración:** La herramienta genera automáticamente un fichero `debug.log` en la raíz del proyecto. Este fichero contiene logs muy detallados de cada operación, incluyendo consultas SOQL, análisis de dependencias y resultados de la API, lo que es invaluable para depurar problemas.
   * **Estructura del código:** La lógica está separada en `src/core` (lógica de negocio como autenticación, grafos) y `src/commands` (lógica de la CLI).
 
-## roadmap Futuras Mejoras
+## 🗺️ Futuras Mejoras
 
   * Implementación completa de la fase de `UPDATE` para manejar dependencias circulares.
   * Funcionalidad de "data masking" para anonimizar datos sensibles.
