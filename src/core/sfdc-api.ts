@@ -1,6 +1,6 @@
 // src/core/sfdc-api.ts
 import { Connection } from 'jsforce';
-import { SObjectDescribe } from './typeDefs.js';
+import { SObjectDescribe, ChildRelationship } from './typeDefs.js'; // Importar ChildRelationship
 import { createWriteStream } from 'fs';
 import path from 'path';
 import { Readable } from 'stream';
@@ -106,8 +106,25 @@ export async function extractDataBulk(conn: Connection, soqlQuery: string, outpu
 export async function extractDataQuery(conn: Connection, soqlQuery: string, dataDir: string, mainObjectName: string): Promise<{ parentFile: string, childFiles: string[] }> {
   logger.info(`Ejecutando consulta con Query API: ${soqlQuery}`);
   
-  const mainObjectDescribe = await describeSObject(conn, mainObjectName);
   const allRelatedIdsToFetch = new Map<string, Set<string>>(); // Map<SObjectName, Set<Id>>
+  const sObjectMetadataMap = new Map<string, { describe: SObjectDescribe, referenceFields: any[] }>();
+
+  async function ensureMetadata(objectName: string): Promise<{ describe: SObjectDescribe, referenceFields: any[] }> {
+    if (sObjectMetadataMap.has(objectName)) {
+      return sObjectMetadataMap.get(objectName)!;
+    }
+    logger.debug(`DEBUG: ensureMetadata - Describiendo SObject: ${objectName} ya que no está en sObjectMetadataMap.`);
+    const describe = await describeSObject(conn, objectName); // describeSObject tiene su propia caché interna
+    const referenceFields = describe.fields.filter(f => f.type === 'reference' && f.referenceTo && f.referenceTo.length > 0);
+    const metadata = { describe, referenceFields };
+    sObjectMetadataMap.set(objectName, metadata);
+    logger.debug(`DEBUG: Metadatos para ${objectName} asegurados y cacheados en sObjectMetadataMap.`);
+    return metadata;
+  }
+
+  // Asegurar metadatos para el objeto principal
+  await ensureMetadata(mainObjectName);
+  // const mainObjectDescribe = sObjectMetadataMap.get(mainObjectName)!.describe; // Se usará metadata.describe directamente
 
   // Execute the original SOQL query
   const records = await conn.query(soqlQuery);
@@ -120,8 +137,9 @@ export async function extractDataQuery(conn: Connection, soqlQuery: string, data
     if (sObjectDisplayFieldCache.has(objName)) {
       return sObjectDisplayFieldCache.get(objName);
     }
-    const describe = await describeSObject(conn, objName);
-    const displayField = getSObjectDisplayField(describe);
+    // Necesitamos la descripción para esto, la obtenemos de ensureMetadata para asegurar que se cachea correctamente
+    const metadata = await ensureMetadata(objName);
+    const displayField = getSObjectDisplayField(metadata.describe);
     sObjectDisplayFieldCache.set(objName, displayField);
     return displayField;
   }
@@ -131,107 +149,118 @@ export async function extractDataQuery(conn: Connection, soqlQuery: string, data
     if (sObjectUniqueFieldsCache.has(objName)) {
       return sObjectUniqueFieldsCache.get(objName)!;
     }
-    const describe = await describeSObject(conn, objName);
-    const uniqueFields = describe.fields.filter(f => f.unique && !f.nillable && f.type === 'string').map(f => ({ name: f.name, type: f.type }));
+    // Necesitamos la descripción para esto, la obtenemos de ensureMetadata
+    const metadata = await ensureMetadata(objName);
+    const uniqueFields = metadata.describe.fields.filter(f => f.unique && !f.nillable && f.type === 'string').map(f => ({ name: f.name, type: f.type }));
     sObjectUniqueFieldsCache.set(objName, uniqueFields);
     return uniqueFields;
   }
 
   // Función para procesar un registro y extraer IDs de referencia
-  async function processRecord(record: any, currentObjectName: string, isParent: boolean = true) {
+  async function processRecord(
+    record: any,
+    currentObjectName: string,
+    metadata: { describe: SObjectDescribe, referenceFields: any[] },
+    isParent: boolean = true
+  ) {
     logger.debug(`DEBUG: processRecord - INICIO para objeto: ${currentObjectName}, ¿es padre?: ${isParent}, registro: ${JSON.stringify(record)}`);
     const processedRecord: any = {}; // Initialize an empty object for processed record
     const originalRecord = { ...record }; // Keep a copy of the original record
     delete originalRecord.attributes; // Remove attributes from the original record copy
 
-    const objDescribe = await describeSObject(conn, currentObjectName);
-    logger.debug(`DEBUG: Campos de la descripción de ${currentObjectName}: ${objDescribe.fields.map(f => f.name + (f.relationshipName ? ` (${f.relationshipName})` : '')).join(', ')}`);
+    const objDescribe = metadata.describe;
+    logger.debug(`DEBUG: Campos de la descripción de ${currentObjectName} (desde metadatos pasados): ${objDescribe.fields.map(f => f.name + (f.relationshipName ? ` (${f.relationshipName})` : '')).join(', ')}`);
 
-    // Copy all fields from the original record to processedRecord
+    // Copiar todos los campos del registro original al registro procesado
     for (const fieldName in originalRecord) {
       processedRecord[fieldName] = originalRecord[fieldName];
     }
 
-    // Iterar sobre los campos descritos para identificar y procesar campos de referencia
-    for (const field of objDescribe.fields) {
-      if (field.type === 'reference' && field.referenceTo && field.referenceTo.length > 0) {
-        const refId = originalRecord[field.name]; // Usar originalRecord para obtener el ID
-        if (refId) {
-          const referencedObjectName = field.referenceTo[0]; // Asumiendo una única referencia por simplicidad
-          logger.debug(`DEBUG: Encontrado campo de referencia: ${field.name} (${referencedObjectName}) con ID: ${refId}`);
-          if (!allRelatedIdsToFetch.has(referencedObjectName)) {
-            allRelatedIdsToFetch.set(referencedObjectName, new Set<string>());
-          }
-          allRelatedIdsToFetch.get(referencedObjectName)!.add(refId);
+    // Iterar sobre los campos de referencia pre-calculados para identificar y procesar campos de referencia.
+    for (const field of metadata.referenceFields) {
+      const refId = originalRecord[field.name];
+      if (refId) {
+        const referencedObjectName = field.referenceTo![0]; // Asumiendo una única referencia
+        logger.debug(`DEBUG: Encontrado campo de referencia (desde metadatos pasados): ${field.name} (${referencedObjectName}) con ID: ${refId}`);
+        if (!allRelatedIdsToFetch.has(referencedObjectName)) {
+          allRelatedIdsToFetch.set(referencedObjectName, new Set<string>());
         }
+        allRelatedIdsToFetch.get(referencedObjectName)!.add(refId);
       }
-      // La lógica de subconsultas se moverá a la iteración de childRelationships
     }
 
     // Procesar subconsultas utilizando objDescribe.childRelationships
-    // Esta es la forma más robusta de identificar relaciones hijo.
-    if (objDescribe.childRelationships && objDescribe.childRelationships.length > 0) {
-      logger.debug(`DEBUG: Buscando subconsultas en childRelationships de ${currentObjectName}. Total de childRelationships: ${objDescribe.childRelationships.length}`);
-      for (const childRel of objDescribe.childRelationships) {
-        // childRel: { cascadeDelete: boolean, childSObject: string, deprecatedAndHidden: boolean, field: string, junctionIdListNames: any[], junctionReferenceTo: any[], relationshipName: string, restrictedDelete: boolean }
-        const childRelationshipName = childRel.relationshipName; // Ej: "Contacts"
-        const childSObjectName = childRel.childSObject;    // Ej: "Contact"
-        const fieldOnChildToParent = childRel.field;       // Ej: "AccountId"
+    // SOLO si es un registro padre (isParent === true)
+    if (isParent) {
+      if (objDescribe.childRelationships && objDescribe.childRelationships.length > 0) {
+        logger.debug(`DEBUG: Buscando subconsultas en childRelationships de ${currentObjectName} porque es PADRE. Total de childRelationships: ${objDescribe.childRelationships.length}`);
+          // Iterar sobre las claves del registro original que parecen ser subconsultas
+          const potentialSubqueryKeys = Object.keys(originalRecord).filter(key =>
+            originalRecord[key] &&
+            typeof originalRecord[key] === 'object' &&
+            originalRecord[key].records !== undefined &&
+            Array.isArray(originalRecord[key].records)
+          );
 
-        logger.debug(`DEBUG: Evaluando childRelationship: '${childRelationshipName}' (Objeto hijo: ${childSObjectName}, Campo en hijo: ${fieldOnChildToParent})`);
+          if (potentialSubqueryKeys.length > 0) {
+            logger.debug(`DEBUG: Claves de subconsulta potenciales encontradas en el registro de ${currentObjectName}: ${potentialSubqueryKeys.join(', ')}`);
+          }
+          
+          for (const childRelationshipNameFromKey of potentialSubqueryKeys) {
+            // Encontrar la metada de childRelationship correspondiente
+            // Asegurarse de que objDescribe.childRelationships existe antes de usar find
+            const childRel: ChildRelationship | undefined = objDescribe.childRelationships?.find(cr => cr.relationshipName === childRelationshipNameFromKey);
 
-        // Asegurarse de que childRelationshipName es un string antes de usarlo como clave
-        if (typeof childRelationshipName === 'string') {
-          if (originalRecord[childRelationshipName] &&
-              typeof originalRecord[childRelationshipName] === 'object' &&
-              originalRecord[childRelationshipName].records !== undefined && // Verificar explícitamente .records
-              Array.isArray(originalRecord[childRelationshipName].records)) {
-            
-            const subqueryData = originalRecord[childRelationshipName];
-            const childRecords = subqueryData.records;
-            
-            logger.debug(`DEBUG: Subconsulta ENCONTRADA para relationshipName: '${childRelationshipName}' (Objeto: ${childSObjectName}). Registros: ${childRecords.length}`);
+            if (childRel) {
+              const childSObjectName = childRel.childSObject;
+              const fieldOnChildToParent = childRel.field;
 
-            // Eliminar la subconsulta del registro procesado del padre, ya que irá a un CSV separado
-            delete processedRecord[childRelationshipName];
+              // Solo proceder si childSObjectName es válido
+              if (childSObjectName && typeof childRelationshipNameFromKey === 'string') { // childRelationshipNameFromKey es string por Object.keys
+                logger.debug(`DEBUG: Procesando subconsulta (basado en clave de registro): '${childRelationshipNameFromKey}' (Objeto hijo: ${childSObjectName}, Campo en hijo: ${fieldOnChildToParent})`);
+                
+                const subqueryData = originalRecord[childRelationshipNameFromKey]; // Ya sabemos que es una estructura de subconsulta válida
+                const childRecordsData = subqueryData.records;
+                
+                logger.debug(`DEBUG: Subconsulta ENCONTRADA para relationshipName: '${childRelationshipNameFromKey}' (Objeto: ${childSObjectName}). Registros: ${childRecordsData.length}`);
 
-            if (!childRecordsMap[childSObjectName]) {
-              childRecordsMap[childSObjectName] = [];
-              logger.debug(`DEBUG: Inicializando childRecordsMap para: ${childSObjectName}`);
-            }
+                const childMetadata = await ensureMetadata(childSObjectName);
+                delete processedRecord[childRelationshipNameFromKey];
 
-            for (const childRecord of childRecords) {
-              // Procesar recursivamente el registro hijo
-              const processedChildRecord = await processRecord(childRecord, childSObjectName, false);
-              
-              // Añadir el ID del padre al registro hijo usando el campo correcto de la relación
-              logger.debug(`DEBUG: Añadiendo ID del padre (${currentObjectName} Id: ${originalRecord.Id}) al hijo ${childSObjectName} usando el campo '${fieldOnChildToParent}'`);
-              processedChildRecord[fieldOnChildToParent] = originalRecord.Id;
-              
-              childRecordsMap[childSObjectName].push(processedChildRecord);
-              logger.debug(`DEBUG: Añadido registro hijo procesado a childRecordsMap para ${childSObjectName}.`);
-            }
-          } else {
-            // Log si la clave existe pero no es una subconsulta válida, o si no existe.
-            if (originalRecord.hasOwnProperty(childRelationshipName)) {
-              logger.debug(`DEBUG: La clave '${childRelationshipName}' existe en originalRecord para ${currentObjectName}, pero no es una subconsulta con estructura .records válida. Valor: ${JSON.stringify(originalRecord[childRelationshipName])}`);
+                if (!childRecordsMap[childSObjectName]) {
+                  childRecordsMap[childSObjectName] = [];
+                  logger.debug(`DEBUG: Inicializando childRecordsMap para: ${childSObjectName}`);
+                }
+
+                for (const childRecord of childRecordsData) {
+                  const processedChildRecord = await processRecord(childRecord, childSObjectName, childMetadata, false);
+                  logger.debug(`DEBUG: Añadiendo ID del padre (${currentObjectName} Id: ${originalRecord.Id}) al hijo ${childSObjectName} usando el campo '${fieldOnChildToParent}'`);
+                  processedChildRecord[fieldOnChildToParent] = originalRecord.Id;
+                  childRecordsMap[childSObjectName].push(processedChildRecord);
+                  logger.debug(`DEBUG: Añadido registro hijo procesado a childRecordsMap para ${childSObjectName}.`);
+                }
+              } else {
+                // Esto podría ocurrir si childSObject es nulo en los metadatos para una relationshipName que sí está en los datos.
+                logger.warn(`ADVERTENCIA: Para la clave de subconsulta '${childRelationshipNameFromKey}' en ${currentObjectName}, los metadatos de childRelationship indican un childSObject nulo ('${childSObjectName}') o relationshipName no es string. Se omite esta subconsulta.`);
+              }
             } else {
-              // Esto es normal si la SOQL no incluyó esta subconsulta específica.
-              // logger.debug(`DEBUG: La clave de relación '${childRelationshipName}' no está presente en originalRecord para ${currentObjectName}.`);
+              // Esto significa que una clave en originalRecord parecía una subconsulta (tenía .records) pero no coincidía con ninguna childRelationshipName conocida en los metadatos.
+              logger.warn(`ADVERTENCIA: La clave '${childRelationshipNameFromKey}' en el registro de ${currentObjectName} parece una subconsulta pero no coincide con ninguna childRelationship definida en los metadatos. Se omite.`);
             }
           }
-        } else {
-          logger.warn(`ADVERTENCIA: relationshipName es nulo o indefinido para una childRelationship de ${currentObjectName}. Objeto hijo: ${childSObjectName}, Campo en hijo: ${fieldOnChildToParent}. Se omite esta relación.`);
-        }
+      } else {
+        logger.debug(`DEBUG: No hay childRelationships definidas en la descripción para ${currentObjectName} (o no es padre y no se buscan).`);
       }
     } else {
-      logger.debug(`DEBUG: No hay childRelationships definidas en la descripción para ${currentObjectName}.`);
+        // Si no es un registro padre, se omite la búsqueda de subconsultas en childRelationships.
+        logger.debug(`DEBUG: El registro de ${currentObjectName} no es padre (isParent=${isParent}), se omite la búsqueda de subconsultas en childRelationships.`);
     }
     return processedRecord;
   }
 
+  const parentMetadata = sObjectMetadataMap.get(mainObjectName)!;
   for (const record of records.records) {
-    const processedParentRecord = await processRecord(record, mainObjectName);
+    const processedParentRecord = await processRecord(record, mainObjectName, parentMetadata, true);
     parentRecords.push(processedParentRecord);
   }
 
@@ -281,27 +310,26 @@ export async function extractDataQuery(conn: Connection, soqlQuery: string, data
   }
 
   // Añadir campos de visualización y únicos a los registros
-  function addRelatedFieldsToRecord(record: any, objDescribe: SObjectDescribe) {
-    for (const field of objDescribe.fields) {
-      if (field.type === 'reference' && field.referenceTo && field.referenceTo.length > 0) {
-        const refId = record[field.name];
-        if (refId) {
-          const referencedObjectName = field.referenceTo[0];
-          const objCache = idDisplayValueCache.get(referencedObjectName);
-          if (objCache) {
-            const displayField = sObjectDisplayFieldCache.get(referencedObjectName);
-            if (displayField && objCache.has(refId)) {
-              record[`${field.name}_${displayField}`] = objCache.get(refId);
-            }
-            const uniqueFields = sObjectUniqueFieldsCache.get(referencedObjectName);
-            if (uniqueFields) {
-              uniqueFields.forEach(f => {
-                const uniqueValue = objCache.get(`${refId}_${f.name}`);
-                if (uniqueValue) {
-                  record[`${field.name}_${f.name}`] = uniqueValue;
-                }
-              });
-            }
+  function addRelatedFieldsToRecord(record: any, referenceFields: any[], objName: string) {
+    for (const field of referenceFields) { // Usar los campos de referencia pre-filtrados
+      // La condición (field.type === 'reference' && field.referenceTo && field.referenceTo.length > 0) ya se cumplió
+      const refId = record[field.name];
+      if (refId) {
+        const referencedObjectName = field.referenceTo![0]; // Sabemos que referenceTo existe y tiene elementos
+        const objCache = idDisplayValueCache.get(referencedObjectName);
+        if (objCache) {
+          const displayField = sObjectDisplayFieldCache.get(referencedObjectName); // Esta caché es para nombres de campos, está bien
+          if (displayField && objCache.has(refId)) {
+            record[`${field.name}_${displayField}`] = objCache.get(refId);
+          }
+          const uniqueFields = sObjectUniqueFieldsCache.get(referencedObjectName); // Esta caché es para nombres de campos, está bien
+          if (uniqueFields) {
+            uniqueFields.forEach(f_unique => { // Renombrar f para evitar colisión de nombres
+              const uniqueValue = objCache.get(`${refId}_${f_unique.name}`);
+              if (uniqueValue) {
+                record[`${field.name}_${f_unique.name}`] = uniqueValue;
+              }
+            });
           }
         }
       }
@@ -309,15 +337,20 @@ export async function extractDataQuery(conn: Connection, soqlQuery: string, data
   }
 
   // Procesar registros padre
+  const mainMeta = sObjectMetadataMap.get(mainObjectName)!;
   for (const record of parentRecords) {
-    addRelatedFieldsToRecord(record, mainObjectDescribe);
+    addRelatedFieldsToRecord(record, mainMeta.referenceFields, mainObjectName);
   }
 
   // Procesar registros hijo
   for (const childObjectName in childRecordsMap) {
-    const childObjDescribe = await describeSObject(conn, childObjectName);
-    for (const record of childRecordsMap[childObjectName]) {
-      addRelatedFieldsToRecord(record, childObjDescribe);
+    const childMetadata = sObjectMetadataMap.get(childObjectName);
+    if (childMetadata) { // Asegurarse de que los metadatos del hijo existen
+      for (const record of childRecordsMap[childObjectName]) {
+        addRelatedFieldsToRecord(record, childMetadata.referenceFields, childObjectName);
+      }
+    } else {
+      logger.warn(`ADVERTENCIA: No se encontraron metadatos en sObjectMetadataMap para ${childObjectName} al intentar añadir campos relacionados. Se omitirán para este objeto.`);
     }
   }
 

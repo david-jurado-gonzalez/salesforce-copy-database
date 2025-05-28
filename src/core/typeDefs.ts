@@ -39,6 +39,18 @@ export interface CommandOptions {
 }
 
 // Interfaz para la descripción de un SObject de Salesforce
+
+export interface ChildRelationship {
+  childSObject: string;
+  deprecatedAndHidden: boolean;
+  field: string;
+  junctionIdListNames: string[];
+  junctionReferenceTo: string[];
+  relationshipName: string | null | undefined;
+  cascadeDelete: boolean;
+  restrictedDelete: boolean;
+}
+
 export interface SObjectDescribe {
   name: string;
   label: string;
@@ -55,16 +67,7 @@ export interface SObjectDescribe {
     relationshipName: string | null | undefined;
     referenceTo: string[] | null | undefined;
   }[];
-  childRelationships?: { // La hacemos opcional por si alguna descripción no la trae, aunque debería
-    childSObject: string;
-    deprecatedAndHidden: boolean;
-    field: string;
-    junctionIdListNames: string[];
-    junctionReferenceTo: string[];
-    relationshipName: string | null | undefined;
-    cascadeDelete: boolean;
-    restrictedDelete: boolean;
-  }[];
+  childRelationships?: ChildRelationship[]; // Usamos el tipo ChildRelationship
 }
 
 // Estructura del mapa de IDs

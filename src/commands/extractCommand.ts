@@ -13,8 +13,46 @@ function hasSubquery(soql: string): boolean {
   // Expresión regular para detectar patrones de subconsulta (SELECT ... FROM ...)
   // Busca un paréntesis de apertura seguido de SELECT, luego cualquier cosa, luego FROM, luego cualquier cosa,
   // y finalmente un paréntesis de cierre.
-  const subqueryRegex = /\(\s*SELECT\s+[^)]+\s+FROM\s+\w+\s*\)/i;
+  const subqueryRegex = /\(\s*SELECT\s[^)]*?FROM\s+\w+[^)]*\)/i;
   return subqueryRegex.test(soql);
+}
+
+// Helper function to extract the main SObject name from a SOQL query, handling subqueries.
+function extractMainSObjectNameFromQuery(soqlQuery: string): string | null {
+    const fromKeywordRegex = /\bFROM\b/gi; // Case-insensitive, global search for "FROM"
+    let match;
+
+    while ((match = fromKeywordRegex.exec(soqlQuery)) !== null) {
+        const fromStartIndex = match.index; // Index where "FROM" starts
+        
+        // Calculate parenthesis depth just before this "FROM" keyword
+        let currentDepthBeforeFrom = 0;
+        for (let k = 0; k < fromStartIndex; k++) { // Corrected line
+            if (soqlQuery[k] === '(') {
+                currentDepthBeforeFrom++;
+            } else if (soqlQuery[k] === ')') {
+                // Ensure depth doesn't go below zero for malformed queries
+                if (currentDepthBeforeFrom > 0) {
+                    currentDepthBeforeFrom--;
+                }
+            }
+        }
+
+        // If depth is 0, this "FROM" is part of the main query
+        if (currentDepthBeforeFrom === 0) {
+            // Extract the SObject name following "FROM "
+            const substringAfterFromKeyword = soqlQuery.substring(fromStartIndex + 'FROM'.length);
+            const trimmedSubstring = substringAfterFromKeyword.trimStart(); // Remove leading spaces
+            
+            const objectNameMatchRegex = /^(\w+)/; // Regex to match the first word (SObject name)
+            const objectNameMatch = trimmedSubstring.match(objectNameMatchRegex);
+            
+            if (objectNameMatch && objectNameMatch[1]) {
+                return objectNameMatch[1]; // Return the found SObject name
+            }
+        }
+    }
+    return null; // Should not be reached for a valid SOQL query with a FROM clause
 }
 
 export async function extractCommand(options: CommandOptions) {
@@ -49,16 +87,12 @@ export async function extractCommand(options: CommandOptions) {
     const dataDir = getOrgDataDir(sourceAlias);
     await ensureDir(dataDir);
     
-    // Extraemos el nombre del objeto principal de la query (el último FROM en la consulta)
-    // Esto es más robusto para subconsultas, ya que el último FROM siempre se refiere al objeto principal.
-    const fromClauses = options.query.split(/\bFROM\s+/i); // Divide por 'FROM ' (insensible a mayúsculas/minúsculas)
-    const lastFromClause = fromClauses[fromClauses.length - 1];
-    const mainObjectNameMatch = lastFromClause.match(/^(\w+)/); // Coincide con la primera palabra al principio de la última cláusula
+    // Utilizar la nueva función para extraer el nombre del objeto principal
+    const mainObjectName = extractMainSObjectNameFromQuery(options.query);
 
-    if (!mainObjectNameMatch) {
-      throw new Error("No se pudo determinar el objeto principal de la consulta SOQL.");
+    if (!mainObjectName) {
+      throw new Error("No se pudo determinar el objeto principal de la consulta SOQL. Verifique la sintaxis de su consulta.");
     }
-    const mainObjectName = mainObjectNameMatch[1]; // Captura el nombre del objeto
     
     const queryHasSubquery = hasSubquery(options.query);
     let apiToUse: 'bulk' | 'rest';
