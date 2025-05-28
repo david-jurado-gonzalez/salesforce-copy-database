@@ -2,7 +2,7 @@
 import { getSalesforceConnection } from '../core/auth.js';
 import { loadConfig, getOrgDataDir, ensureDir } from '../core/fileManager.js';
 import { logger } from '../core/logger.js';
-import { CommandOptions } from '../core/typeDefs.js';
+import { CommandOptions, DEFAULT_ORG_CONFIG } from '../core/typeDefs.js';
 import ora from 'ora';
 import path from 'path';
 import { createWriteStream } from 'fs';
@@ -30,7 +30,7 @@ export async function extractCommand(options: CommandOptions) {
     if (!config || !config.orgs || !config.orgs[options.source]) {
       logger.warn('No se encontró configuración de organización. Se utilizará la configuración por defecto o SFDX.');
       config = config || { orgs: {} };
-      config.orgs[options.source] = {};
+      config.orgs[options.source] = { ...DEFAULT_ORG_CONFIG };
     }
     if (!options.query) {
       throw new Error("La opción '--query' es obligatoria para la extracción.");
