@@ -157,7 +157,7 @@ El objeto `jobConfig` permite configurar el comportamiento global:
 
 ## 💻 Uso y Comandos
 
-Todos los comandos se ejecutan a través de `npm start --`.
+Todos los comandos se ejecutan a través de `node dist/src/main.js` o `npm start --`.
 
 ### `extract`
 
@@ -168,7 +168,7 @@ Extrae datos de una organización de origen y los guarda localmente en formato C
 
   * `--source, -s`: El alias de la organización de origen (debe coincidir con un alias de SF CLI o una entrada en `config.json`).
   * `--query, -q`: La consulta SOQL a ejecutar. **Debe ir entre comillas.**
-  * `--config, -c`: (Opcional) Ruta al fichero de configuración. Por defecto es `./config.json`.
+  * `--config, -c`: (Opcional) Ruta al fichero de configuración. Por defecto es `./config.json`. Si este archivo no existe, la herramienta intentará autenticarse usando el alias de SFDX o las credenciales proporcionadas por línea de comandos.
 
 ### `deploy`
 
@@ -199,7 +199,7 @@ Quieres guardar todas tus Cuentas del entorno `dev1` en ficheros locales.
 **Comando:**
 
 ```bash
-npm start -- extract -s dev1 -q "SELECT Id, Name, Phone, Website, Industry FROM Account"
+node dist/src/main.js extract -s dev1 -q "SELECT Id, Name, Phone, Website, Industry FROM Account"
 ```
 
 **Resultado en la consola:**
@@ -227,7 +227,7 @@ Usamos una subconsulta para traer Cuentas y Contactos en un solo comando.
 **Comando:**
 
 ```bash
-npm start -- extract -s dev1 -q "SELECT Name, Phone, (SELECT LastName, FirstName, Email, Phone FROM Contacts) FROM Account WHERE Type = 'Customer - Direct'"
+node dist/src/main.js extract -s dev1 -q "SELECT Name, Phone, (SELECT LastName, FirstName, Email, Phone FROM Contacts) FROM Account WHERE Type = 'Customer - Direct'"
 ```
 
 **Ficheros creados:**
@@ -241,7 +241,7 @@ La herramienta se encargará de crear primero las Cuentas, guardar sus nuevos ID
 **Comando:**
 
 ```bash
-npm start -- deploy -s dev1 -t full-sandbox
+node dist/src/main.js deploy -s dev1 -t full-sandbox
 ```
 
 **Resultado en la consola (Ejemplo):**
@@ -280,7 +280,7 @@ Antes de planificar una migración, quieres ver qué objetos están disponibles 
 **Comando:**
 
 ```bash
-npm start -- list-objects -t full-sandbox
+node dist/src/main.js list-objects -t full-sandbox
 ```
 
 **Resultado en la consola:**

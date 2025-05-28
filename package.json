@@ -2,11 +2,11 @@
   "name": "salesforce-data-copier",
   "version": "1.0.0",
   "description": "Herramienta para copiar datos entre organizaciones de Salesforce.",
-  "main": "dist/main.js",
+  "main": "dist/src/main.js",
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/main.js",
+    "start": "node dist/src/main.js",
     "dev": "ts-node src/main.ts",
     "test": "mocha --loader=ts-node/esm --project tsconfig.test.json \"test/**/*.test.ts\" --experimental-specifier-resolution=node"
   },
@@ -21,11 +21,11 @@
     "chalk": "^5.4.1",
     "commander": "^14.0.0",
     "csv-parse": "^5.6.0",
-    "csv-stringify": "^6.5.2",
     "inquirer": "^8.2.6",
     "jsforce": "^3.8.2",
     "ora": "^8.2.0",
-    "winston": "^3.17.0"
+    "winston": "^3.17.0",
+    "jsonstream": "*"
   },
   "devDependencies": {
     "@types/chai": "^5.2.2",
@@ -41,6 +41,7 @@
     "rewiremock": "^3.14.6",
     "sinon-chai": "^4.0.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.4.5"
+    "typescript": "^5.4.5",
+    "@types/jsonstream": "*"
   }
 }

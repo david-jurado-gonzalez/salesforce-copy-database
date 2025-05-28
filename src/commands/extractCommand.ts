@@ -6,7 +6,6 @@ import { CommandOptions, DEFAULT_ORG_CONFIG } from '../core/typeDefs.js';
 import ora from 'ora';
 import path from 'path';
 import { createWriteStream } from 'fs';
-import { stringify } from 'csv-stringify';
 
 export async function extractCommand(options: CommandOptions) {
   logger.info(`--- Iniciando Extracción de Datos ---`);
@@ -51,11 +50,10 @@ export async function extractCommand(options: CommandOptions) {
     spinner.start(`Ejecutando consulta y extrayendo datos para '${mainObjectName}'...`);
 
     const recordStream = (await conn.bulk.query(options.query)).stream();
-    const csvStringifier = stringify({ header: true });
     const fileWriteStream = createWriteStream(outputFile);
     
     let recordCount = 0;
-    recordStream.on('data', () => {
+    recordStream.on('data', (data) => {
         recordCount++;
         spinner.text = `Procesando registros de '${mainObjectName}'... (${recordCount} encontrados)`;
     });
@@ -67,7 +65,7 @@ export async function extractCommand(options: CommandOptions) {
     });
 
     // Pipe para dirigir los datos de la query al archivo CSV
-    recordStream.pipe(csvStringifier).pipe(fileWriteStream);
+    recordStream.pipe(fileWriteStream);
 
   } catch (error) {
     spinner.fail('La extracción ha fallado.');
