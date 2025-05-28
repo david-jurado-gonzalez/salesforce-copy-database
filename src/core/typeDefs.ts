@@ -27,9 +27,13 @@ export interface CommandOptions {
 // Interfaz para la descripción de un SObject de Salesforce
 export interface SObjectDescribe {
   name: string;
+  label: string;
+  custom: boolean;
   fields: {
     name: string;
+    label: string;
     type: string;
+    custom: boolean;
     updateable: boolean;
     createable: boolean;
     nillable: boolean;

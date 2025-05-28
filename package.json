@@ -7,9 +7,14 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/main.js",
-    "dev": "ts-node src/main.ts"
+    "dev": "ts-node src/main.ts",
+    "test": "mocha --loader=ts-node/esm \"test/**/*.test.ts\" --experimental-specifier-resolution=node"
   },
-  "keywords": ["salesforce", "data", "migration"],
+  "keywords": [
+    "salesforce",
+    "data",
+    "migration"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
@@ -17,14 +22,23 @@
     "commander": "^14.0.0",
     "csv-parse": "^5.6.0",
     "csv-stringify": "^6.5.2",
-    "inquirer": "^12.6.3",
+    "inquirer": "^8.2.6",
     "jsforce": "^3.8.2",
     "ora": "^8.2.0",
     "winston": "^3.17.0"
   },
   "devDependencies": {
-    "@types/inquirer": "^9.0.7",
+    "@types/chai": "^5.2.2",
+    "@types/chai-as-promised": "^8.0.2",
+    "@types/inquirer": "^8.2.6",
+    "@types/mocha": "^10.0.10",
     "@types/node": "^20.12.12",
+    "@types/sinon": "^17.0.4",
+    "@types/sinon-chai": "^4.0.0",
+    "chai": "^5.2.0",
+    "chai-as-promised": "^8.0.1",
+    "mocha": "^11.5.0",
+    "sinon-chai": "^4.0.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.5"
   }
