@@ -120,23 +120,49 @@ export async function loadConfig(configPath?: string, options: {
   source?: string;
   target?: string;
 } = {}): Promise<AppConfig> {
-  let config: AppConfig = { orgs: {} };
+  let config: AppConfig = {
+    orgs: {}
+  };
 
+  // Inicializar las organizaciones con la configuración por defecto
+  config = {
+    orgs: {},
+    jobConfig: {
+      deploymentOrder: [],
+      twoPassObjects: [],
+      personAccountsEnabled: false
+    }
+  };
+
+  console.log('loadConfig configPath:', configPath);
   // Intentar cargar la configuración del archivo si existe
   if (configPath) {
+    logger.debug(`Intentando cargar la configuración desde: ${configPath}`);
     try {
       const rawData = await fs.readFile(configPath, 'utf-8');
-      config = JSON.parse(rawData) as AppConfig;
+      const parsedConfig = JSON.parse(rawData) as AppConfig;
+      config = {
+        ...config,
+        ...parsedConfig,
+        orgs: {
+          ...config.orgs,
+          ...parsedConfig.orgs
+        }
+      };
       logger.debug('Archivo de configuración cargado correctamente');
     } catch (error) {
       if ((error as any).code === 'ENOENT') {
         logger.info(`No se encontró archivo de configuración en ${configPath}, se usará configuración por defecto`);
       } else if (error instanceof SyntaxError) {
-        logger.error(`El archivo de configuración en ${configPath} contiene JSON inválido, se usará configuración por defecto`);
+        logger.warn(`El archivo de configuración en ${configPath} contiene JSON inválido, se usará configuración por defecto`);
       } else {
         logger.warn(`Error al cargar configuración desde ${configPath}, se usará configuración por defecto`);
       }
+      config = { orgs: {} , jobConfig: { deploymentOrder: [], twoPassObjects: [], personAccountsEnabled: false }}; // Inicializar con un objeto vacío para evitar errores posteriores
     }
+  } else {
+    logger.info('No se especificó la ruta del archivo de configuración, se usará la configuración por defecto.');
+    config = { orgs: {}, jobConfig: { deploymentOrder: [], twoPassObjects: [], personAccountsEnabled: false } }; // Inicializar con un objeto vacío si no hay ruta
   }
 
   // Aplicar configuración por defecto a todas las organizaciones existentes

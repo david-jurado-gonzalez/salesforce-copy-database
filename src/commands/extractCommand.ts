@@ -9,16 +9,28 @@ import { createWriteStream } from 'fs';
 import { stringify } from 'csv-stringify';
 
 export async function extractCommand(options: CommandOptions) {
+  console.log('extractCommand ejecutándose...');
   logger.info(`--- Iniciando Extracción de Datos ---`);
   const spinner = ora('Cargando configuración...').start();
 
   try {
-    const config = await loadConfig(options.config);
+    let config = await loadConfig(options.config === '' ? undefined : options.config ? options.config : './config.json', {
+      username: options.username,
+      password: options.password,
+      loginUrl: options.loginUrl,
+      source: options.source,
+      target: options.target
+    });
     const sourceAlias = options.source;
 
+    console.log('Opciones recibidas:', options);
+
+    
     // Permitimos que no exista la org en config - se usará la org por defecto de SFDX
-    if (!config.orgs) {
-      config.orgs = {};
+    if (!config || !config.orgs || !config.orgs[options.source]) {
+      logger.warn('No se encontró configuración de organización. Se utilizará la configuración por defecto o SFDX.');
+      config = config || { orgs: {} };
+      config.orgs[options.source] = {};
     }
     if (!options.query) {
       throw new Error("La opción '--query' es obligatoria para la extracción.");
