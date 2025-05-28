@@ -2,15 +2,18 @@ import { expect, use } from 'chai';
 import * as sinon from 'sinon';
 import sinonChai from 'sinon-chai';
 import chaiAsPromised from 'chai-as-promised';
-import { extractCommand } from '../../src/commands/extractCommand.js';
-import { logger } from '../../src/core/logger.js';
-import * as auth from '../../src/core/auth.js';
-import * as fileManager from '../../src/core/fileManager.js';
-import { Connection } from 'jsforce';
-import * as ora from 'ora';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as csvStringify from 'csv-stringify';
+import rewiremock from 'rewiremock'; // Add this import
+
+// Original imports - these will be handled by rewiremock or imported dynamically
+// import { extractCommand } from '../../src/commands/extractCommand.js';
+// import { logger } from '../../src/core/logger.js';
+// import * as auth from '../../src/core/auth.js';
+// import * as fileManager from '../../src/core/fileManager.js';
+// import { Connection } from 'jsforce';
+// import * as ora from 'ora';
+// import * as fs from 'fs';
+// import * as path from 'path';
+// import * as csvStringify from 'csv-stringify';
 import { CommandOptions, AppConfig } from '../../src/core/typeDefs.js';
 import { EventEmitter } from 'events';
 
@@ -39,44 +42,113 @@ describe('extractCommand', () => {
             source: { username: 'testUser', password: 'testPw' },
         },
     };
-    const mockConn = sinon.createStubInstance(Connection);
 
-    beforeEach(() => {
+    // These will be imported dynamically or proxied
+    let extractCommandModule: typeof import('../../src/commands/extractCommand.js');
+    let loggerModule: typeof import('../../src/core/logger.js');
+    let authModule: typeof import('../../src/core/auth.js');
+    let fileManagerModule: typeof import('../../src/core/fileManager.js');
+    let jsforceModule: any; // Changed to any
+    let oraModule: typeof import('ora');
+    let fsModule: typeof import('fs');
+    let pathModule: typeof import('path');
+    let csvStringifyModule: typeof import('csv-stringify');
+
+    // Use a placeholder for Connection type until jsforceModule is loaded
+    let Connection: any;
+
+    const mockConn: any = { bulk: { query: sinon.stub() }, query: sinon.stub(), describe: sinon.stub() }; // More specific mock
+
+    beforeEach(async () => { // Make beforeEach async
         sandbox = sinon.createSandbox();
+        
+        // Enable rewiremock
+        rewiremock.enable();
+
+        // Configure mocks for logger
+        loggerInfoStub = sandbox.stub();
+        loggerErrorStub = sandbox.stub();
+        rewiremock(() => import('../../src/core/logger.js')).with({
+            logger: {
+                info: loggerInfoStub,
+                error: loggerErrorStub,
+                // Add other properties of logger.Logger if needed, or cast to any
+            } as any // Cast to any to suppress type errors for missing properties
+        });
+
+        // Configure mocks for ora
         const mockSpinner = {
             start: sandbox.stub(),
             succeed: sandbox.stub(),
             fail: sandbox.stub(),
             text: '',
         };
-        loggerInfoStub = sandbox.stub(logger, 'info');
-        loggerErrorStub = sandbox.stub(logger, 'error');
-
-        spinnerStartStub = sandbox.stub().returns(mockSpinner);
+        rewiremock(() => import('ora')).with({
+            default: sandbox.stub().returns(mockSpinner)
+        });
+        spinnerStartStub = mockSpinner.start;
         spinnerSucceedStub = mockSpinner.succeed;
         spinnerFailStub = mockSpinner.fail;
         spinnerTextSetterStub = sandbox.stub(mockSpinner, 'text').set(() => {}); // Stub the setter for 'text'
-        sandbox.stub(ora, 'default').returns(spinnerStartStub());
 
-        getSalesforceConnectionStub = sandbox.stub(auth, 'getSalesforceConnection').resolves(mockConn);
-        loadConfigStub = sandbox.stub(fileManager, 'loadConfig').resolves(mockConfig);
-        getOrgDataDirStub = sandbox.stub(fileManager, 'getOrgDataDir').returns('/mock/data/dir');
-        ensureDirStub = sandbox.stub(fileManager, 'ensureDir').resolves();
+        // Configure mocks for auth
+        getSalesforceConnectionStub = sandbox.stub().resolves(mockConn);
+        rewiremock(() => import('../../src/core/auth.js')).with({
+            getSalesforceConnection: getSalesforceConnectionStub
+        });
 
-        connBulkQueryStub = sandbox.stub(mockConn.bulk, 'query');
-        fsCreateWriteStreamStub = sandbox.stub(fs, 'createWriteStream').returns(new EventEmitter() as any); // Mock a writable stream
-        csvStringifyStub = sandbox.stub(csvStringify, 'stringify').returns(new EventEmitter() as any); // Mock a transform stream
+        // Configure mocks for fileManager
+        loadConfigStub = sandbox.stub().resolves(mockConfig);
+        getOrgDataDirStub = sandbox.stub().returns('/mock/data/dir');
+        ensureDirStub = sandbox.stub().resolves();
+        rewiremock(() => import('../../src/core/fileManager.js')).with({
+            loadConfig: loadConfigStub,
+            getOrgDataDir: getOrgDataDirStub,
+            ensureDir: ensureDirStub
+        });
+
+        // Configure mocks for fs
+        fsCreateWriteStreamStub = sandbox.stub().returns(new EventEmitter() as any); // Mock a writable stream
+        rewiremock(() => import('fs')).with({
+            createWriteStream: fsCreateWriteStreamStub
+        });
+
+        // Configure mocks for csv-stringify
+        csvStringifyStub = sandbox.stub().returns(new EventEmitter() as any); // Mock a transform stream
+        rewiremock(() => import('csv-stringify')).with({
+            stringify: csvStringifyStub
+        });
+
+        // Configure mocks for process.exit
         processExitStub = sandbox.stub(process, 'exit');
+
+        // Dynamically import the module under test AFTER mocks are configured
+        extractCommandModule = await rewiremock.module(() => import('../../src/commands/extractCommand.js'));
+        loggerModule = await rewiremock.module(() => import('../../src/core/logger.js'));
+        authModule = await rewiremock.module(() => import('../../src/core/auth.js'));
+        fileManagerModule = await rewiremock.module(() => import('../../src/core/fileManager.js'));
+        jsforceModule = await rewiremock.module(() => import('jsforce'));
+        oraModule = await rewiremock.module(() => import('ora'));
+        fsModule = await rewiremock.module(() => import('fs'));
+        pathModule = await rewiremock.module(() => import('path'));
+        csvStringifyModule = await rewiremock.module(() => import('csv-stringify'));
+
+        // Now that jsforceModule is loaded, assign Connection
+        Connection = jsforceModule.default.Connection || jsforceModule.Connection;
+
+        // Stub methods on the mock connections
+        connBulkQueryStub = mockConn.bulk.query; // Assign the stub directly
     });
 
     afterEach(() => {
         sandbox.restore();
+        rewiremock.disable(); // Disable rewiremock
     });
 
     it('should throw error if source alias is not in config', async () => {
         const options: CommandOptions = { source: 'nonExistentOrg', query: 'SELECT Id FROM Account', config: 'config.json' };
         loadConfigStub.resolves({ orgs: {} }); // No orgs defined
-        await expect(extractCommand(options)).to.be.rejectedWith(
+        await expect(extractCommandModule.extractCommand(options)).to.be.rejectedWith(
             `El alias de origen 'nonExistentOrg' no está definido en el archivo de configuración.`
         );
         expect(loggerErrorStub).to.have.been.calledOnce;
@@ -86,7 +158,7 @@ describe('extractCommand', () => {
 
     it('should throw error if --query option is missing', async () => {
         const options: CommandOptions = { source: 'source', config: 'config.json' };
-        await expect(extractCommand(options as any)).to.be.rejectedWith(
+        await expect(extractCommandModule.extractCommand(options as any)).to.be.rejectedWith(
             "La opción '--query' es obligatoria para la extracción."
         );
         expect(loggerErrorStub).to.have.been.calledOnce;
@@ -96,7 +168,7 @@ describe('extractCommand', () => {
 
     it('should throw error if SOQL query does not contain FROM clause', async () => {
         const options: CommandOptions = { source: 'source', query: 'SELECT Id', config: 'config.json' };
-        await expect(extractCommand(options)).to.be.rejectedWith(
+        await expect(extractCommandModule.extractCommand(options)).to.be.rejectedWith(
             "No se pudo determinar el objeto principal de la consulta SOQL."
         );
         expect(loggerErrorStub).to.have.been.calledOnce;
@@ -122,7 +194,7 @@ describe('extractCommand', () => {
         (stringifyStream as any).pipe = sandbox.stub().returns(writeStream); // Pipe to writeStream
         csvStringifyStub.returns(stringifyStream as any);
 
-        const extractPromise = extractCommand(options);
+        const extractPromise = extractCommandModule.extractCommand(options); // Changed
 
         // Simulate records coming through the stream
         mockBulkQueryStream.emit('data', { Id: '001', Name: 'Test1' });
@@ -130,14 +202,14 @@ describe('extractCommand', () => {
         mockBulkQueryStream.emit('end');
 
         await extractPromise;
-
+        
         expect(loadConfigStub).to.have.been.calledOnceWith('config.json');
         expect(getSalesforceConnectionStub).to.have.been.calledOnceWith('source', mockConfig);
         expect(getOrgDataDirStub).to.have.been.calledOnceWith('source');
         expect(ensureDirStub).to.have.been.calledOnceWith('/mock/data/dir');
         expect(connBulkQueryStub).to.have.been.calledOnceWith(options.query);
         expect(csvStringifyStub).to.have.been.calledOnceWith({ header: true });
-        expect(fsCreateWriteStreamStub).to.have.been.calledOnceWith(path.join('/mock/data/dir', 'Account.csv'));
+        expect(fsCreateWriteStreamStub).to.have.been.calledOnceWith(pathModule.join('/mock/data/dir', 'Account.csv')); // Corrected path.join usage
         
         expect(spinnerStartStub).to.have.been.calledWith('Cargando configuración...');
         expect(spinnerSucceedStub).to.have.been.calledWith(sinon.match(/Extracción completada\. 2 registros guardados/));
@@ -153,7 +225,7 @@ describe('extractCommand', () => {
         (mockBulkQueryStream as any).pipe = sandbox.stub().returnsThis();
         connBulkQueryStub.resolves({ stream: () => mockBulkQueryStream });
 
-        const extractPromise = extractCommand(options);
+        const extractPromise = extractCommandModule.extractCommand(options); // Changed
 
         const error = new Error('SOQL_QUERY_EXCEPTION: Invalid object');
         mockBulkQueryStream.emit('error', error);

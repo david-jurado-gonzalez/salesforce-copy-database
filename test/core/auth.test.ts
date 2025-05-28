@@ -2,14 +2,17 @@ import { expect, use } from 'chai';
 import * as sinon from 'sinon';
 import sinonChai from 'sinon-chai';
 import chaiAsPromised from 'chai-as-promised';
-import { getSalesforceConnection } from '../../src/core/auth.js';
-// Importación corregida del logger
-import { logger } from '../../src/core/logger.js';
-import * as jsforce from 'jsforce';
-import { Connection, IdentityInfo, UserInfo } from 'jsforce';
-import * as fs from 'fs/promises';
-import * as os from 'os';
-import * as path from 'path';
+import rewiremock from 'rewiremock';
+import * as path from 'path'; // Añadimos esta importación
+
+// Original imports - these will be handled by rewiremock or imported dynamically
+// import { getSalesforceConnection } from '../../src/core/auth.js';
+// import { logger } from '../../src/core/logger.js';
+// import * as jsforce from 'jsforce';
+import { Connection, IdentityInfo, UserInfo } from 'jsforce'; // Keep types
+// import * as fs from 'fs/promises';
+// import * as os from 'os';
+// import * as path from 'path';
 
 use(sinonChai);
 use(chaiAsPromised);
@@ -24,22 +27,78 @@ describe('getSalesforceConnection', () => {
     let osHomedirStub: sinon.SinonStub;
     let jsforceConnectionStub: sinon.SinonStub;
 
-    beforeEach(() => {
-        sandbox = sinon.createSandbox();
-        loggerInfoStub = sandbox.stub(logger, 'info');
-        loggerErrorStub = sandbox.stub(logger, 'error');
-        loggerDebugStub = sandbox.stub(logger, 'debug');
-        
-        // Stub the jsforce.Connection class itself
-        connStub = sandbox.createStubInstance(Connection);
-        jsforceConnectionStub = sandbox.stub(jsforce, 'Connection').returns(connStub);
+    // These will be imported dynamically or proxied
+    let authModule: typeof import('../../src/core/auth.js');
+    let loggerModule: typeof import('../../src/core/logger.js');
+    let jsforceModule: any; // Changed to any
+    let fsPromisesModule: typeof import('fs/promises');
+    let osModule: typeof import('os');
+    let pathModule: typeof import('path');
 
-        fsReadFileStub = sandbox.stub(fs, 'readFile');
-        osHomedirStub = sandbox.stub(os, 'homedir').returns('/home/user');
+    beforeEach(async () => {
+        sandbox = sinon.createSandbox();
+        
+        // Enable rewiremock
+        rewiremock.enable();
+
+        // Configure mocks for logger
+        loggerInfoStub = sandbox.stub();
+        loggerErrorStub = sandbox.stub();
+        loggerDebugStub = sandbox.stub();
+        rewiremock(() => import('../../src/core/logger.js')).with({
+            logger: {
+                info: loggerInfoStub,
+                error: loggerErrorStub,
+                debug: loggerDebugStub,
+            } as any
+        });
+
+        // Configure mocks for jsforce Connection
+        connStub = {
+            login: sandbox.stub(),
+            identity: sandbox.stub(),
+            version: '1.0.0',
+            loginUrl: 'https://login.salesforce.com',
+            instanceUrl: 'https://test.salesforce.com',
+            accessToken: 'dummy-token',
+        } as unknown as sinon.SinonStubbedInstance<Connection>;
+
+        jsforceConnectionStub = sandbox.stub().returns(connStub);
+        rewiremock(() => import('jsforce')).with({
+            Connection: jsforceConnectionStub,
+        } as any);
+
+        // Configure mocks for fs/promises
+        fsReadFileStub = sandbox.stub();
+        rewiremock(() => import('fs/promises')).with({
+            readFile: fsReadFileStub
+        });
+
+        // Configure mocks for os
+        osHomedirStub = sandbox.stub();
+        rewiremock(() => import('os')).with({
+            homedir: osHomedirStub
+        });
+
+        // Configure mocks for path
+        rewiremock(() => import('path')).with({
+            join: path.join // Usar directamente path.join
+        });
+
+        // Dynamically import the module under test AFTER mocks are configured
+        authModule = await rewiremock.module(() => import('../../src/core/auth.js'));
+        loggerModule = await rewiremock.module(() => import('../../src/core/logger.js'));
+        jsforceModule = await rewiremock.module(() => import('jsforce'));
+        fsPromisesModule = await rewiremock.module(() => import('fs/promises'));
+        osModule = await rewiremock.module(() => import('os'));
+        pathModule = await rewiremock.module(() => import('path'));
+
+        osHomedirStub.returns('/home/user');
     });
 
     afterEach(() => {
         sandbox.restore();
+        rewiremock.disable();
     });
 
     it('should successfully authenticate using SFDX alias if available', async () => {
@@ -69,15 +128,15 @@ describe('getSalesforceConnection', () => {
             }
         };
 
-        fsReadFileStub.withArgs(path.join('/home/user', '.sfdx', `${alias}.json`), 'utf-8')
+        fsReadFileStub.withArgs(pathModule.join('/home/user', '.sfdx', `${alias}.json`), 'utf-8')
             .resolves(JSON.stringify(sfdxAuthInfo));
         
-        connStub.identity.resolves(mockIdentityInfo); // Simulate successful identity check
+        connStub.identity.resolves(mockIdentityInfo);
 
-        const result = await getSalesforceConnection(alias, config);
+        const result = await authModule.getSalesforceConnection(alias, config);
 
         expect(result).to.equal(connStub);
-        expect(fsReadFileStub).to.have.been.calledWith(path.join('/home/user', '.sfdx', `${alias}.json`), 'utf-8');
+        expect(fsReadFileStub).to.have.been.calledWith(pathModule.join('/home/user', '.sfdx', `${alias}.json`), 'utf-8');
         expect(loggerInfoStub).to.have.been.calledWith(`Conexión establecida para el alias '${alias}' usando credenciales locales de SFDX.`);
         expect(connStub.identity).to.have.been.calledOnce;
         expect(jsforceConnectionStub).to.have.been.calledWithNew;
@@ -102,7 +161,7 @@ describe('getSalesforceConnection', () => {
             organizationId: '00Dxxxxxxxxxxxxxxx',
             url: 'https://test.salesforce.com',
             username: username,
-            password: password, // This field is usually not present in real results, but for stubbing...
+            password: password,
             accessToken: '00Dxxxxxxxxxxxxxxx',
             instanceUrl: 'https://test.salesforce.com',
             serverUrl: 'https://test.salesforce.com',
@@ -115,19 +174,18 @@ describe('getSalesforceConnection', () => {
                 accessToken: '00Dxxxxxxxxxxxxxxx',
                 instanceUrl: 'https://test.salesforce.com',
                 serverUrl: 'https://test.salesforce.com',
-            } as UserInfo // Cast to UserInfo to satisfy type checking
+            } as UserInfo
         };
 
-        // Simulate SFDX alias failure (file not found)
-        fsReadFileStub.withArgs(path.join('/home/user', '.sfdx', `${alias}.json`), 'utf-8')
+        fsReadFileStub.withArgs(pathModule.join('/home/user', '.sfdx', `${alias}.json`), 'utf-8')
             .rejects({ code: 'ENOENT' });
 
         connStub.login.withArgs(username, password).resolves(mockLoginResult);
 
-        const result = await getSalesforceConnection(alias, config);
+        const result = await authModule.getSalesforceConnection(alias, config);
 
         expect(result).to.equal(connStub);
-        expect(fsReadFileStub).to.have.been.calledOnce; // Attempted SFDX alias
+        expect(fsReadFileStub).to.have.been.calledOnce;
         expect(loggerDebugStub).to.have.been.calledWith(sinon.match(/No se pudo conectar con el alias SFDX/));
         expect(jsforceConnectionStub).to.have.been.calledWithNew;
         expect(jsforceConnectionStub).to.have.been.calledWith({ loginUrl: loginUrl });
@@ -139,15 +197,14 @@ describe('getSalesforceConnection', () => {
         const alias = 'unknownOrg';
         const config = { orgs: {} };
 
-        // Simulate SFDX alias failure (file not found)
-        fsReadFileStub.withArgs(path.join('/home/user', '.sfdx', `${alias}.json`), 'utf-8')
+        fsReadFileStub.withArgs(pathModule.join('/home/user', '.sfdx', `${alias}.json`), 'utf-8')
             .rejects({ code: 'ENOENT' });
 
-        await expect(getSalesforceConnection(alias, config)).to.be.rejectedWith(
+        await expect(authModule.getSalesforceConnection(alias, config)).to.be.rejectedWith(
             `No se encontraron credenciales válidas para el alias '${alias}'. Compruebe sus alias de SFDX o el archivo de configuración.`
         );
         expect(loggerDebugStub).to.have.been.calledWith(sinon.match(/No se pudo conectar con el alias SFDX/));
-        expect(loggerErrorStub).to.not.have.been.called; // No config.json error if no credentials provided
+        expect(loggerErrorStub).to.not.have.been.called;
     });
 
     it('should throw an error if config.json credentials fail', async () => {
@@ -161,13 +218,12 @@ describe('getSalesforceConnection', () => {
         };
         const loginError = new Error('INVALID_LOGIN');
 
-        // Simulate SFDX alias failure (file not found)
-        fsReadFileStub.withArgs(path.join('/home/user', '.sfdx', `${alias}.json`), 'utf-8')
+        fsReadFileStub.withArgs(pathModule.join('/home/user', '.sfdx', `${alias}.json`), 'utf-8')
             .rejects({ code: 'ENOENT' });
 
         connStub.login.withArgs(username, password).rejects(loginError);
 
-        await expect(getSalesforceConnection(alias, config)).to.be.rejectedWith(loginError);
+        await expect(authModule.getSalesforceConnection(alias, config)).to.be.rejectedWith(loginError);
         expect(loggerDebugStub).to.have.been.calledWith(sinon.match(/No se pudo conectar con el alias SFDX/));
         expect(jsforceConnectionStub).to.have.been.calledWithNew;
         expect(jsforceConnectionStub).to.have.been.calledWith({ loginUrl: 'https://login.salesforce.com' });
@@ -179,14 +235,14 @@ describe('getSalesforceConnection', () => {
         const alias = 'badJsonOrg';
         const config = { orgs: {} };
 
-        fsReadFileStub.withArgs(path.join('/home/user', '.sfdx', `${alias}.json`), 'utf-8')
+        fsReadFileStub.withArgs(pathModule.join('/home/user', '.sfdx', `${alias}.json`), 'utf-8')
             .resolves('invalid json');
 
-        await expect(getSalesforceConnection(alias, config)).to.be.rejectedWith(
+        await expect(authModule.getSalesforceConnection(alias, config)).to.be.rejectedWith(
             `No se encontraron credenciales válidas para el alias '${alias}'. Compruebe sus alias de SFDX o el archivo de configuración.`
         );
         expect(loggerDebugStub).to.have.been.calledWith(sinon.match(/No se pudo conectar con el alias SFDX/));
-        expect(loggerErrorStub).to.not.have.been.called; // Error is caught internally by connectWithSfdxAlias
+        expect(loggerErrorStub).to.not.have.been.called;
     });
 
     it('should handle SFDX alias file missing accessToken or instanceUrl', async () => {
@@ -194,10 +250,10 @@ describe('getSalesforceConnection', () => {
         const config = { orgs: {} };
         const sfdxAuthInfo = { accessToken: 'testAccessToken' }; // Missing instanceUrl
 
-        fsReadFileStub.withArgs(path.join('/home/user', '.sfdx', `${alias}.json`), 'utf-8')
+        fsReadFileStub.withArgs(pathModule.join('/home/user', '.sfdx', `${alias}.json`), 'utf-8')
             .resolves(JSON.stringify(sfdxAuthInfo));
 
-        await expect(getSalesforceConnection(alias, config)).to.be.rejectedWith(
+        await expect(authModule.getSalesforceConnection(alias, config)).to.be.rejectedWith(
             `No se encontraron credenciales válidas para el alias '${alias}'. Compruebe sus alias de SFDX o el archivo de configuración.`
         );
         expect(loggerDebugStub).to.have.been.calledWith(sinon.match(/No se pudo conectar con el alias SFDX/));

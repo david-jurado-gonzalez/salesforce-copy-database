@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "target": "ES2021",
+    "outDir": "./dist-test",
+    "types": ["mocha", "chai", "sinon", "sinon-chai", "node"]
+  },
+  "include": ["test/**/*.ts"],
+  "exclude": ["node_modules"]
+}

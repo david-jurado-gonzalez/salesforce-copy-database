@@ -8,7 +8,7 @@
     "build": "tsc",
     "start": "node dist/main.js",
     "dev": "ts-node src/main.ts",
-    "test": "mocha --loader=ts-node/esm \"test/**/*.test.ts\" --experimental-specifier-resolution=node"
+    "test": "mocha --loader=ts-node/esm --project tsconfig.test.json \"test/**/*.test.ts\" --experimental-specifier-resolution=node"
   },
   "keywords": [
     "salesforce",
@@ -38,6 +38,7 @@
     "chai": "^5.2.0",
     "chai-as-promised": "^8.0.1",
     "mocha": "^11.5.0",
+    "rewiremock": "^3.14.6",
     "sinon-chai": "^4.0.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.5"
