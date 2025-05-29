@@ -18,6 +18,7 @@ import {
     QueryHistoryEntry
 } from './queryHistoryManager.js';
 import { generateSuggestedQueries } from './backupQuerySuggester.js';
+import { buildSoqlQueryInteractive } from '../interactive/queryAssistant.js'; // Añadida importación
 import { writeFileSync, existsSync, mkdirSync } from 'fs';
 import path from 'path';
 import { AppConfig } from '../core/typeDefs.js'; // Importar AppConfig
@@ -85,15 +86,51 @@ export async function handleExtractData(currentState: SessionState, appConfig: A
     }
 
     if (!effectiveQuery) {
-        const { queryOrObject } = await inquirer.prompt([
+        const { queryInputMode } = await inquirer.prompt([
             {
-                type: 'input',
-                name: 'queryOrObject',
-                message: 'Ingrese la consulta SOQL o el nombre del objeto principal (ej. Account):',
-                default: currentState.lastQuery || '',
+                type: 'list',
+                name: 'queryInputMode',
+                message: '¿Cómo desea proporcionar la consulta SOQL?',
+                choices: [
+                    { name: 'Construir consulta con asistente', value: 'assistant' },
+                    { name: 'Ingresar SOQL manualmente', value: 'manual' },
+                ],
+                default: 'assistant',
             },
         ]);
-        effectiveQuery = queryOrObject;
+
+        if (queryInputMode === 'assistant') {
+            try {
+                const connection = await auth.getSalesforceConnection(sourceOrg, appConfig);
+                effectiveQuery = await buildSoqlQueryInteractive(connection);
+            } catch (assistError: any) {
+                logger.error(`Error al usar el asistente de consultas: ${assistError.message}`);
+                // Preguntar si quiere intentarlo manualmente
+                const { tryManual } = await inquirer.prompt([
+                    {
+                        type: 'confirm',
+                        name: 'tryManual',
+                        message: 'Hubo un error con el asistente. ¿Desea ingresar la consulta manualmente?',
+                        default: true,
+                    }
+                ]);
+                if (!tryManual) return; // Abortar si no quiere manual
+                // Si tryManual es true, caerá en el bloque 'manual' o el siguiente prompt
+            }
+        }
+
+        // Si no se usó el asistente o falló y el usuario quiere manual, o si eligió manual directamente
+        if (queryInputMode === 'manual' || !effectiveQuery) {
+            const { queryOrObject } = await inquirer.prompt([
+                {
+                    type: 'input',
+                    name: 'queryOrObject',
+                    message: 'Ingrese la consulta SOQL o el nombre del objeto principal (ej. Account):',
+                    default: currentState.lastQuery || '',
+                },
+            ]);
+            effectiveQuery = queryOrObject;
+        }
     }
 
     if (!effectiveQuery) {
