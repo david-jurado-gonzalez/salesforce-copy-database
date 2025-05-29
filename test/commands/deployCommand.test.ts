@@ -102,6 +102,9 @@ beforeEach(async () => {
 
         // Configure mocks for inquirer
         inquirerPromptStub = sandbox.stub(); // Create a stub for inquirer.prompt
+        // Initialize stubs that were potentially removed or commented out
+        getSalesforceConnectionStub = sandbox.stub(); // Ensure this is initialized
+
         rewiremock(() => import('inquirer')).with({
             prompt: inquirerPromptStub,
             // Add other properties of inquirer.PromptModule if needed, or cast to any
@@ -132,20 +135,47 @@ beforeEach(async () => {
         loggerErrorStub = sandbox.stub();
         loggerWarnStub = sandbox.stub();
         rewiremock(() => import('../../src/core/logger.js')).with({
-            logger: {
-                info: loggerInfoStub,
-                error: loggerErrorStub,
-                warn: loggerWarnStub,
-                // Add other properties of logger.Logger if needed, or cast to any
-                // For now, we'll assume only info, error, warn are used directly.
-                // If other methods are called, they will need to be mocked here.
-            } as any // Cast to any to suppress type errors for missing properties
+            Logger: class { // Mock the Logger class
+                info = loggerInfoStub;
+                error = loggerErrorStub;
+                warn = loggerWarnStub;
+                debug = sandbox.stub();
+                setLogLevel = sandbox.stub();
+                constructor(context: string = 'App') {
+                    // Mock constructor
+                }
+            } as any // Use 'as any' to bypass strict class signature checking for the mock
         });
 
         // Configure mocks for auth
-        getSalesforceConnectionStub = sandbox.stub();
+        // getSalesforceConnectionStub is initialized above
         rewiremock(() => import('../../src/core/auth.js')).with({
-            getSalesforceConnection: getSalesforceConnectionStub
+            Auth: class { // Mock the Auth class
+                // Add 'logger' back as 'any' to satisfy TypeScript's structural check
+                logger: any = {
+                    info: sandbox.stub(),
+                    warn: sandbox.stub(),
+                    error: sandbox.stub(),
+                    debug: sandbox.stub(),
+                    setLogLevel: sandbox.stub()
+                };
+                getSalesforceConnection = getSalesforceConnectionStub;
+                getOrgAliasList = sandbox.stub().resolves([]);
+                getOrgAliases = sandbox.stub().resolves({});
+                execCommand = sandbox.stub().resolves({ stdout: '', stderr: '' });
+                readAliasCache = sandbox.stub().resolves({});
+                writeAliasCache = sandbox.stub().resolves();
+                getAliasDetails = sandbox.stub().resolves(undefined);
+                removeAlias = sandbox.stub().resolves();
+                clearAliases = sandbox.stub().resolves();
+                // Add missing methods from the error message
+                getAuthInfoFromCache = sandbox.stub().resolves(null); // Or mock a specific return
+                saveAuthInfoToCache = sandbox.stub().resolves();
+                connectWithSfdxAlias = sandbox.stub().resolves(mockTargetConn); // Or mock a specific connection
+                constructor() { // Constructor should not take arguments
+                     // Mock constructor
+                }
+            } as any // Use 'as any' to bypass strict class signature checking for the mock
         });
 
         // Configure mocks for fileManager
@@ -268,11 +298,11 @@ beforeEach(async () => {
         console.log('Iniciando prueba de carga de módulos');
         
         // Configuración específica para esta prueba
-        const testConfig = { source: 'source', target: 'target', config: 'config.json' };
+        const testConfig = { sourceOrgAlias: 'source', targetOrgAlias: 'target', configPath: 'config.json' };
         inquirerPromptStub.resolves({ confirm: true });
         
         try {
-            await deployCommandModule.deployCommand(testConfig);
+            await deployCommandModule.deployData(testConfig);
             console.log('Prueba completada exitosamente');
         } catch (error: any) {
             if (error.message?.includes('there is no "parent module"')) {
@@ -287,24 +317,24 @@ beforeEach(async () => {
     });
 
     it('should throw error if --target option is missing', async () => {
-        const options = { source: 'source', config: 'config.json' };
-        await expect(deployCommandModule.deployCommand(options as any)).to.be.rejectedWith("La opción '--target' es obligatoria para el despliegue.");
+        const options = { sourceOrgAlias: 'source', configPath: 'config.json' }; // targetOrgAlias is intentionally missing for this test
+        await expect(deployCommandModule.deployData(options as any)).to.be.rejectedWith("La opción '--targetOrgAlias' es obligatoria para el despliegue.");
         expect(loggerErrorStub).to.have.been.calledOnce;
         expect(processExitStub).to.have.been.calledWith(1);
     });
 
     it('should cancel deployment if user does not confirm', async () => {
         inquirerPromptStub.resolves({ confirm: false });
-        const options = { source: 'source', target: 'target', config: 'config.json' };
-        await deployCommandModule.deployCommand(options);
+        const options = { sourceOrgAlias: 'source', targetOrgAlias: 'target', configPath: 'config.json' };
+        await deployCommandModule.deployData(options);
         expect(loggerWarnStub).to.have.been.calledWith('Despliegue cancelado por el usuario.');
         expect(processExitStub).to.have.been.calledWith(0);
     });
 
     it('should proceed without confirmation if --force flag is used', async () => {
         inquirerPromptStub.resolves({ confirm: false }); // This should be ignored
-        const options = { source: 'source', target: 'target', config: 'config.json', force: true };
-        await deployCommandModule.deployCommand(options);
+        const options = { sourceOrgAlias: 'source', targetOrgAlias: 'target', configPath: 'config.json', force: true };
+        await deployCommandModule.deployData(options);
         expect(loggerWarnStub).to.have.been.calledWith(sinon.match(/Flag --force detectado/));
         expect(inquirerPromptStub).to.not.have.been.called;
         expect(processExitStub).to.not.have.been.called; // Should not exit
@@ -369,8 +399,8 @@ beforeEach(async () => {
             '003A000000EEEEE': 'b00A000000CCCCC',
         });
 
-        const options = { source: 'source', target: 'target', config: 'config.json' };
-        await deployCommandModule.deployCommand(options);
+        const options = { sourceOrgAlias: 'source', targetOrgAlias: 'target', configPath: 'config.json' };
+        await deployCommandModule.deployData(options);
 
         expect(loadConfigStub).to.have.been.calledOnceWith('config.json');
         expect(ensureDirStub).to.have.been.calledTwice; // For mappings and errors
@@ -448,8 +478,8 @@ beforeEach(async () => {
             '003A000000EEEEE': 'b00A000000CCCCC',
         });
 
-        const options = { source: 'source', target: 'target', config: 'config.json' };
-        await deployCommandModule.deployCommand(options);
+        const options = { sourceOrgAlias: 'source', targetOrgAlias: 'target', configPath: 'config.json' };
+        await deployCommandModule.deployData(options);
 
         expect(targetConnBulkLoadStub).to.have.been.calledWith('Account', 'insert');
         expect(targetConnBulkLoadStub).to.have.been.calledWith('Contact', 'insert');
@@ -481,8 +511,8 @@ beforeEach(async () => {
             { success: false, errors: ['FIELD_CUSTOM_VALIDATION_EXCEPTION: Invalid Name'] },
         ]);
 
-        const options = { source: 'source', target: 'target', config: 'config.json' };
-        await deployCommandModule.deployCommand(options);
+        const options = { sourceOrgAlias: 'source', targetOrgAlias: 'target', configPath: 'config.json' };
+        await deployCommandModule.deployData(options);
 
         expect(targetConnBulkLoadStub).to.have.been.calledWith('Account', 'insert');
         expect(writeErrorLogStub).to.have.been.calledWith('target', 'Account', 'insert-errors', sinon.match.array);
@@ -516,8 +546,8 @@ beforeEach(async () => {
             { success: true, id: 'b00A000000CCCCC' },
         ]);
 
-        const options = { source: 'source', target: 'target', config: 'config.json' };
-        await deployCommandModule.deployCommand(options);
+        const options = { sourceOrgAlias: 'source', targetOrgAlias: 'target', configPath: 'config.json' };
+        await deployCommandModule.deployData(options);
 
         expect(loggerWarnStub).to.have.been.calledWith(sinon.match(/No se encontró el archivo Account\.csv/));
         expect(targetConnBulkLoadStub).to.not.have.been.calledWith('Account', 'insert');
@@ -540,8 +570,8 @@ beforeEach(async () => {
             pipe: sandbox.stub().returns(emptyParser)
         });
 
-        const options = { source: 'source', target: 'target', config: 'config.json' };
-        await deployCommandModule.deployCommand(options);
+        const options = { sourceOrgAlias: 'source', targetOrgAlias: 'target', configPath: 'config.json' };
+        await deployCommandModule.deployData(options);
 
         expect(spinnerSucceedStub).to.have.been.calledWith(sinon.match(/Account: No hay registros para procesar/));
         expect(spinnerSucceedStub).to.have.been.calledWith(sinon.match(/Contact: No hay registros para procesar/));

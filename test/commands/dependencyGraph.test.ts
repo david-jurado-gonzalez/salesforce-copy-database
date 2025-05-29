@@ -7,7 +7,7 @@ import { expect, use } from 'chai';
 import * as sinon from 'sinon';
 import sinonChai from 'sinon-chai';
 import { DependencyGraph } from '../../src/commands/dependencyGraph.js';
-import { logger } from '../../src/core/logger.js';
+import { Logger } from '../../src/core/logger.js';
 import { SObjectDescribe } from '../../src/core/typeDefs.js';
 
 use(sinonChai);
@@ -17,12 +17,16 @@ describe('DependencyGraph', () => {
     let loggerDebugStub: sinon.SinonStub;
     let loggerWarnStub: sinon.SinonStub;
     let graph: DependencyGraph;
+    let testLoggerInstance: Logger; // Renamed for clarity
 
     beforeEach(() => {
         sandbox = sinon.createSandbox();
-        loggerDebugStub = sandbox.stub(logger, 'debug');
-        loggerWarnStub = sandbox.stub(logger, 'warn');
-        graph = new DependencyGraph();
+        // Instantiate a logger for test purposes. DependencyGraph creates its own internal logger.
+        testLoggerInstance = new Logger('TestDependencyGraph');
+        // These stubs are on testLoggerInstance. They will NOT capture logs from DependencyGraph's internal logger.
+        loggerDebugStub = sandbox.stub(testLoggerInstance, 'debug');
+        loggerWarnStub = sandbox.stub(testLoggerInstance, 'warn');
+        graph = new DependencyGraph(); // DependencyGraph constructor takes no arguments.
     });
 
     afterEach(() => {

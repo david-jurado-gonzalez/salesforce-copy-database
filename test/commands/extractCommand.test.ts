@@ -15,6 +15,7 @@ import rewiremock from 'rewiremock'; // Add this import
 // import * as path from 'path';
 // import * as csvStringify from 'csv-stringify';
 import { CommandOptions, AppConfig } from '../../src/core/typeDefs.js';
+import { ExtractDataParams } from '../../src/commands/extractCommand.js'; // Import type from .ts, but use .js extension
 import { EventEmitter } from 'events';
 
 use(sinonChai);
@@ -69,11 +70,10 @@ describe('extractCommand', () => {
         loggerInfoStub = sandbox.stub();
         loggerErrorStub = sandbox.stub();
         rewiremock(() => import('../../src/core/logger.js')).with({
-            logger: {
-                info: loggerInfoStub,
-                error: loggerErrorStub,
-                // Add other properties of logger.Logger if needed, or cast to any
-            } as any // Cast to any to suppress type errors for missing properties
+            Logger: class {
+                info = loggerInfoStub;
+                error = loggerErrorStub;
+            } as any
         });
 
         // Configure mocks for ora
@@ -94,7 +94,13 @@ describe('extractCommand', () => {
         // Configure mocks for auth
         getSalesforceConnectionStub = sandbox.stub().resolves(mockConn);
         rewiremock(() => import('../../src/core/auth.js')).with({
-            getSalesforceConnection: getSalesforceConnectionStub
+            Auth: class {
+                logger: any;
+                constructor() {
+                    this.logger = { info: sinon.stub(), error: sinon.stub(), warn: sinon.stub(), debug: sinon.stub(), getLogLevel: sinon.stub().returns('info'), setLogLevel: sinon.stub() };
+                }
+                getSalesforceConnection = getSalesforceConnectionStub;
+            } as any
         });
 
         // Configure mocks for fileManager
@@ -123,7 +129,8 @@ describe('extractCommand', () => {
         processExitStub = sandbox.stub(process, 'exit');
 
         // Dynamically import the module under test AFTER mocks are configured
-        extractCommandModule = await rewiremock.module(() => import('../../src/commands/extractCommand.js'));
+        const tempExtractCommandModule = await rewiremock.module(() => import('../../src/commands/extractCommand.js'));
+        extractCommandModule = tempExtractCommandModule;
         loggerModule = await rewiremock.module(() => import('../../src/core/logger.js'));
         authModule = await rewiremock.module(() => import('../../src/core/auth.js'));
         fileManagerModule = await rewiremock.module(() => import('../../src/core/fileManager.js'));
@@ -146,14 +153,14 @@ describe('extractCommand', () => {
     });
 
     it('should attempt to use default org if source alias is not in config', async () => {
-        const options: CommandOptions = { source: 'nonExistentOrg', query: 'SELECT Id FROM Account', config: 'config.json' };
+        const options: ExtractDataParams = { sourceOrgAlias: 'nonExistentOrg', query: 'SELECT Id FROM Account' };
         loadConfigStub.resolves({ orgs: {} }); // No orgs defined
 
         const mockBulkQueryStream = new EventEmitter();
         (mockBulkQueryStream as any).pipe = sandbox.stub().returnsThis();
         connBulkQueryStub.resolves({ stream: () => mockBulkQueryStream });
 
-        const extractPromise = extractCommandModule.extractCommand(options);
+        const extractPromise = extractCommandModule.extractData(options);
 
         // Simulate successful extraction
         mockBulkQueryStream.emit('data', { Id: '001', Name: 'Test1' });
@@ -167,8 +174,8 @@ describe('extractCommand', () => {
     });
 
     it('should throw error if --query option is missing', async () => {
-        const options: CommandOptions = { source: 'source', config: 'config.json' };
-        await expect(extractCommandModule.extractCommand(options as any)).to.be.rejectedWith(
+        const options: ExtractDataParams = { sourceOrgAlias: 'source', query: '' }; // Query is required, add empty for now, will be checked by test
+        await expect(extractCommandModule.extractData(options as any)).to.be.rejectedWith(
             "La opción '--query' es obligatoria para la extracción."
         );
         expect(loggerErrorStub).to.have.been.calledOnce;
@@ -177,8 +184,8 @@ describe('extractCommand', () => {
     });
 
     it('should throw error if SOQL query does not contain FROM clause', async () => {
-        const options: CommandOptions = { source: 'source', query: 'SELECT Id', config: 'config.json' };
-        await expect(extractCommandModule.extractCommand(options)).to.be.rejectedWith(
+        const options: ExtractDataParams = { sourceOrgAlias: 'source', query: 'SELECT Id' };
+        await expect(extractCommandModule.extractData(options)).to.be.rejectedWith(
             "No se pudo determinar el objeto principal de la consulta SOQL."
         );
         expect(loggerErrorStub).to.have.been.calledOnce;
@@ -187,7 +194,7 @@ describe('extractCommand', () => {
     });
 
     it('should successfully extract data and save to CSV', async () => {
-        const options: CommandOptions = { source: 'source', query: 'SELECT Id, Name FROM Account', config: 'config.json' };
+        const options: ExtractDataParams = { sourceOrgAlias: 'source', query: 'SELECT Id, Name FROM Account' };
         const mockRecords = [{ Id: '001', Name: 'Test1' }, { Id: '002', Name: 'Test2' }];
         
         const mockBulkQueryStream = new EventEmitter();
@@ -204,7 +211,7 @@ describe('extractCommand', () => {
         (stringifyStream as any).pipe = sandbox.stub().returns(writeStream); // Pipe to writeStream
         csvStringifyStub.returns(stringifyStream as any);
 
-        const extractPromise = extractCommandModule.extractCommand(options); // Changed
+        const extractPromise = extractCommandModule.extractData(options); // Changed
 
         // Simulate records coming through the stream
         mockBulkQueryStream.emit('data', { Id: '001', Name: 'Test1' });
@@ -230,12 +237,12 @@ describe('extractCommand', () => {
     });
 
     it('should handle errors during bulk query stream', async () => {
-        const options: CommandOptions = { source: 'source', query: 'SELECT Id FROM NonExistentObject', config: 'config.json' };
+        const options: ExtractDataParams = { sourceOrgAlias: 'source', query: 'SELECT Id FROM NonExistentObject' };
         const mockBulkQueryStream = new EventEmitter();
         (mockBulkQueryStream as any).pipe = sandbox.stub().returnsThis();
         connBulkQueryStub.resolves({ stream: () => mockBulkQueryStream });
 
-        const extractPromise = extractCommandModule.extractCommand(options); // Changed
+        const extractPromise = extractCommandModule.extractData(options); // Changed
 
         const error = new Error('SOQL_QUERY_EXCEPTION: Invalid object');
         mockBulkQueryStream.emit('error', error);

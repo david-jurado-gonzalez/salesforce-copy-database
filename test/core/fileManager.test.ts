@@ -4,13 +4,14 @@ import * as path from 'path';
 import * as sinon from 'sinon';
 import sinonChai from 'sinon-chai';
 import chaiAsPromised from 'chai-as-promised';
+import rewiremock from 'rewiremock';
 import {
     getWorkDir, getOrgWorkDir, getOrgDataDir, getOrgMetadataDir,
     getOrgMappingsDir, getOrgErrorsDir, ensureDir, loadConfig,
     readJsonFile, writeJsonFile, readIdMap, writeIdMap,
     writeErrorLog, getObjectListFromDataDir
 } from '../../src/core/fileManager.js';
-import { logger } from '../../src/core/logger.js';
+import { Logger } from '../../src/core/logger.js'; // Import class
 import { AppConfig, IdMap, DEFAULT_ORG_CONFIG } from '../../src/core/typeDefs.js';
 
 use(sinonChai);
@@ -34,10 +35,35 @@ describe('FileManager Functions', () => {
 
     beforeEach(() => {
         sandbox = sinon.createSandbox();
-        loggerInfoStub = sandbox.stub(logger, 'info');
-        loggerErrorStub = sandbox.stub(logger, 'error');
-        loggerDebugStub = sandbox.stub(logger, 'debug');
-        loggerWarnStub = sandbox.stub(logger, 'warn');
+
+        // Stubs for logger methods
+        loggerInfoStub = sandbox.stub();
+        loggerErrorStub = sandbox.stub();
+        loggerDebugStub = sandbox.stub();
+        loggerWarnStub = sandbox.stub();
+
+        // Enable rewiremock and mock Logger
+        // Ensure rewiremock is imported if not already: import rewiremock from 'rewiremock';
+        rewiremock.enable(); // Assuming rewiremock is imported at the top
+        rewiremock(() => import('../../src/core/logger.js')).with({
+            Logger: class {
+                winstonLogger: any; // Propiedad añadida para compatibilidad
+                consoleTransport: any; // Propiedad añadida para compatibilidad
+
+                constructor(context?: string) {
+                    // El constructor ahora acepta el parámetro opcional 'context'
+                    // No es necesario hacer nada con él para este mock.
+                }
+
+                info = loggerInfoStub;
+                error = loggerErrorStub;
+                debug = loggerDebugStub;
+                warn = loggerWarnStub;
+                getLogLevel = sandbox.stub().returns('info');
+                setLogLevel = sandbox.stub();
+            } as any // Se añade 'as any' para simplificar el tipado del mock
+        });
+
         fsAccessStub = sandbox.stub(fs, 'access');
         fsMkdirStub = sandbox.stub(fs, 'mkdir');
         fsWriteFileStub = sandbox.stub(fs, 'writeFile');
@@ -48,6 +74,7 @@ describe('FileManager Functions', () => {
 
     afterEach(() => {
         sandbox.restore();
+        rewiremock.disable(); // Disable rewiremock after each test
     });
 
     describe('Path Helpers', () => {
