@@ -18,6 +18,7 @@ Migrar datos entre entornos de Salesforce (ej: de Producción a una Sandbox, o e
   * **Despliegue en Dos Fases:** Maneja dependencias circulares o complejas mediante un proceso de inserción (`INSERT`) seguido de una actualización (`UPDATE`).
   * **Interfaz de Usuario Clara:** Ofrece feedback constante con indicadores de progreso, logs de colores y resúmenes de operación.
   * **Seguro por Defecto:** Pide confirmación antes de ejecutar operaciones que modifiquen datos en un entorno de destino.
+  * **Modo Interactivo Guiado:** Una interfaz paso a paso para configurar y ejecutar operaciones de extracción y despliegue, ideal para usuarios nuevos o para tareas complejas.
 
 ## Prerequisites
 
@@ -208,6 +209,22 @@ Muestra una lista de todos los objetos que se pueden consultar (`queryable`) en 
 
   * `--target, -t`: El alias de la organización a inspeccionar.
 
+### `interactive` (o `i`)
+
+Inicia el modo interactivo de la herramienta, que guía al usuario a través de la configuración y ejecución de operaciones de extracción y despliegue de datos.
+
+**Sintaxis:**
+`npm start -- interactive`
+O también:
+`npm start -- i`
+
+Este modo es especialmente útil para:
+  * Usuarios que se familiarizan con la herramienta.
+  * Configurar operaciones complejas de forma asistida.
+  * Evitar errores comunes al introducir parámetros en la línea de comandos.
+
+Al iniciar, se presentará un menú principal para elegir la acción (Extraer, Desplegar, Listar Objetos, etc.) y se solicitarán los parámetros necesarios paso a paso.
+
 ## 💡 Casos de Uso y Ejemplos
 
 ### Escenario 1: Hacer un backup de todas las Cuentas de un entorno
@@ -325,7 +342,68 @@ node dist/src/main.js list-objects -t full-sandbox
 > Opportunity
 > MyCustomObject__c
 > ... (y muchos más)
+
+-----
+
+### Escenario 4: Primera Migración de Datos con Asistencia (Modo Interactivo)
+
+Eres nuevo en la herramienta y quieres migrar Oportunidades y sus Productos de Oportunidad relacionados desde tu entorno `uat` a una nueva sandbox de desarrollo `dev-sbx`. No estás seguro de todos los parámetros o la sintaxis exacta de la SOQL.
+
+**Acción:**
+Inicia el modo interactivo para que te guíe en el proceso.
+
+**Comando:**
+
+```bash
+node dist/src/main.js interactive
 ```
+O más corto:
+```bash
+npm start -- i
+```
+
+**Interacción Guiada (Ejemplo):**
+
+```
+> Bienvenido al Modo Interactivo de Salesforce Data Copier.
+> ¿Qué acción te gustaría realizar?
+> 1. Extraer datos
+> 2. Desplegar datos
+> 3. Listar objetos SObject
+> 4. Salir
+> Elige una opción: 1
+
+> --- Configuración de Extracción ---
+> Introduce el alias de la organización de ORIGEN (ej: orgFuente): uat
+> Introduce la consulta SOQL para la extracción (ej: SELECT Name FROM Account): SELECT Name, Amount, CloseDate, (SELECT Quantity, UnitPrice, Product2.Name FROM OpportunityLineItems) FROM Opportunity WHERE StageName = 'Closed Won'
+
+> ¿Quieres forzar un tipo de API específico (auto/bulk/rest)? (Presiona Enter para 'auto'):
+> [INFO] Iniciando extracción desde 'uat' con la consulta proporcionada...
+> (Progreso de la extracción...)
+> [SUCCESS] Extracción completada. Datos guardados en workdir/uat/data/
+
+> ¿Qué acción te gustaría realizar?
+> 1. Extraer datos
+> 2. Desplegar datos
+> 3. Listar objetos SObject
+> 4. Salir
+> Elige una opción: 2
+
+> --- Configuración de Despliegue ---
+> Introduce el alias de la organización de ORIGEN de los datos (directorio local donde se guardaron los datos extraídos, ej: orgFuente): uat
+> Introduce el alias de la organización de DESTINO (ej: orgDestino): dev-sbx
+> ¿Quieres forzar la operación sin confirmación previa? (s/N): N
+
+> Vas a desplegar datos desde 'workdir/uat/data/' en la organización con alias 'dev-sbx'.
+> Esta acción puede crear y actualizar un gran número de registros.
+> ¿Estás seguro de que quieres continuar? (y/N): y
+> [INFO] Iniciando despliegue hacia 'dev-sbx'...
+> (Progreso del despliegue...)
+> [SUCCESS] Despliegue completado.
+```
+
+**Resultado:**
+Las Oportunidades y sus Líneas de Producto se han extraído de `uat` y desplegado correctamente en `dev-sbx`, todo ello guiado por la interfaz interactiva, simplificando el proceso y reduciendo la posibilidad de errores.
 
 ## 🛠️ Desarrollo y Depuración
 
@@ -335,7 +413,7 @@ node dist/src/main.js list-objects -t full-sandbox
     # Ejemplo: npm run dev -- extract -s dev1 -q "SELECT Id FROM Account LIMIT 1"
     ```
   * **Logs de depuración:** La herramienta genera automáticamente un fichero `debug.log` en la raíz del proyecto. Este fichero contiene logs muy detallados de cada operación, incluyendo consultas SOQL, análisis de dependencias y resultados de la API, lo que es invaluable para depurar problemas.
-  * **Estructura del código:** La lógica está separada en `src/core` (lógica de negocio como autenticación, grafos) y `src/commands` (lógica de la CLI).
+  * **Estructura del código:** La lógica está separada en `src/core` (lógica de negocio como autenticación, gestión de ficheros, logging, grafos de dependencia) y `src/commands` (lógica específica de cada comando de la CLI). Recientemente, módulos clave como `Logger` y `Auth` han sido refactorizados a clases para mejorar la testeabilidad y la organización del código. Las funciones principales de los comandos también han sido extraídas para una mayor modularidad (ej. `extractData`, `deployData`). El nuevo `InteractiveModeManager` en `src/interactive` gestiona el flujo del modo interactivo.
 
 ## 🗺️ Futuras Mejoras
 
