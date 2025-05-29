@@ -183,9 +183,9 @@ Extrae datos de una organización de origen y los guarda localmente en formato C
   * `--source, -s`: El alias de la organización de origen (debe coincidir con un alias de SF CLI o una entrada en `config.json`).
   * `--query, -q`: La consulta SOQL a ejecutar. **Debe ir entre comillas.**
   * `--api-type, -a`: (Opcional) Fuerza el tipo de API a usar para la extracción. Valores posibles:
-    * `auto` (por defecto): Detecta automáticamente si la consulta tiene subconsultas. Usa Query API si las hay, Bulk API si no.
-    * `bulk`: Fuerza el uso de la Bulk API. Fallará si la consulta tiene subconsultas.
-    * `rest`: Fuerza el uso de la Query API (REST API), útil para depuración o consultas pequeñas con subconsultas.
+    * `auto` (por defecto): Intenta usar la API `BULK` por defecto. Si detecta características incompatibles con la API Bulk (como subconsultas en la SOQL), cambia automáticamente a la API `REST` (Query API) para ejecutar la consulta. Este cambio se informa en los logs.
+    * `bulk`: Fuerza el uso de la API `BULK`. La herramienta intentará usar esta API incluso si la consulta contiene características no compatibles (ej. subconsultas), lo que probablemente resultará en un error por parte de Salesforce.
+    * `rest`: Fuerza el uso de la API `REST` (Query API). Útil para consultas con subconsultas o para asegurar el uso de esta API independientemente del contenido de la SOQL.
   * `--config, -c`: (Opcional) Ruta al fichero de configuración. Por defecto es `./config.json`. Si este archivo no existe, la herramienta intentará autenticarse usando el alias de SFDX o las credenciales proporcionadas por línea de comandos.
 
 ### `deploy`
