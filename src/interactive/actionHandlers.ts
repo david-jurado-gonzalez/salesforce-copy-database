@@ -8,6 +8,8 @@ import { SessionManager, SessionState } from './sessionState.js'; // Añadido .j
 import { Logger } from '../core/logger.js';
 import { Auth } from '../core/auth.js';
 import { Connection } from 'jsforce';
+import { executeSoslQuery } from '../core/sfdc-api.js'; // Importar executeSoslQuery
+import { writeRecordsToCsv } from '../core/fileManager.js'; // Importar writeRecordsToCsv
 import { extractData as coreExtractData } from '../commands/extractCommand.js';
 import { deployData } from '../commands/deployCommand.js';
 import { listObjects } from '../commands/listObjectsCommand.js';
@@ -534,5 +536,84 @@ export async function handleSuggestBackupQuery(currentState: SessionState, appCo
 
     } catch (error: any) {
         logger.error(`Error al sugerir query de backup: ${error.message}`);
+    }
+}
+
+/**
+ * Maneja la acción de ejecutar una consulta SOSL.
+ * @param currentState El estado actual de la sesión.
+ * @param appConfig La configuración de la aplicación.
+ */
+export async function handleExecuteSOSLQuery(currentState: SessionState, appConfig: AppConfig): Promise<void> {
+    logger.info('Iniciando ejecución de consulta SOSL...');
+    let sourceOrg = currentState.sourceOrgAlias;
+
+    if (!sourceOrg) {
+        logger.warn('No se ha seleccionado una organización de origen. Por favor, selecciónela primero.');
+        await handleSelectOrg('source', appConfig);
+        currentState = sessionManager.getState(); // Actualizar el estado después de la selección
+        sourceOrg = currentState.sourceOrgAlias;
+        if (!sourceOrg) {
+            logger.error('No se pudo seleccionar una organización de origen. Abortando ejecución de SOSL.');
+            return;
+        }
+    }
+
+    const { soslQueryString } = await inquirer.prompt([
+        {
+            type: 'input',
+            name: 'soslQueryString',
+            message: 'Ingrese la consulta SOSL (ej. FIND {Test} IN ALL FIELDS RETURNING Account(Id, Name), Contact(Id, Name)):',
+            default: currentState.lastSoslQuery || '',
+            validate: (input: string) => input.trim().toLowerCase().startsWith('find ') ? true : 'La consulta SOSL debe comenzar con "FIND ".',
+        },
+    ]);
+
+    if (!soslQueryString) {
+        logger.warn('No se proporcionó ninguna consulta SOSL. Abortando.');
+        return;
+    }
+
+    const defaultOutputFileName = `sosl_results_${new Date().toISOString().replace(/[:.]/g, '-')}.csv`;
+    const defaultOutputPath = path.join(currentState.lastSoslExtractionPath || `./workdir/${sourceOrg}/data/sosl/`, defaultOutputFileName);
+    
+    const { outputPath } = await inquirer.prompt([
+        {
+            type: 'input',
+            name: 'outputPath',
+            message: 'Ingrese la ruta del archivo CSV de salida para los resultados SOSL:',
+            default: defaultOutputPath,
+        },
+    ]);
+
+    try {
+        const connection = await auth.getSalesforceConnection(sourceOrg, appConfig);
+        logger.info(`Ejecutando consulta SOSL en ${sourceOrg}: "${soslQueryString}"`);
+        
+        const results = await executeSoslQuery(connection, soslQueryString);
+
+        if (results.length === 0) {
+            logger.info('La consulta SOSL no devolvió resultados.');
+        } else {
+            // Asegurarse de que el directorio de salida exista
+            const outputDir = path.dirname(outputPath);
+            if (!existsSync(outputDir)) {
+                mkdirSync(outputDir, { recursive: true });
+                logger.info(`Directorio de salida creado: ${outputDir}`);
+            }
+            await writeRecordsToCsv(results, outputPath);
+            logger.info(`Resultados de la consulta SOSL guardados en: ${outputPath}`);
+        }
+        
+        sessionManager.updateState({ lastSoslQuery: soslQueryString, lastSoslExtractionPath: path.dirname(outputPath) });
+        // Opcional: Guardar en historial específico de SOSL si se implementa
+        // await addSoslQueryToHistory(sourceOrg, soslQueryString);
+        logger.info('Ejecución de consulta SOSL completada.');
+
+    } catch (error: any) {
+        logger.error(`Error durante la ejecución de la consulta SOSL: ${error.message}`);
+        if (error.stack) {
+            logger.debug(error.stack);
+        }
     }
 }

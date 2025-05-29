@@ -11,6 +11,8 @@ export interface SessionState {
     targetOrgAlias: string | undefined;
     lastQuery: string | undefined;
     lastExtractionPath: string | undefined;
+    lastSoslQuery: string | undefined; // Nueva propiedad para la última consulta SOSL
+    lastSoslExtractionPath: string | undefined; // Nueva propiedad para la última ruta de extracción SOSL
 }
 
 /**
@@ -26,6 +28,8 @@ export class SessionManager {
             targetOrgAlias: undefined,
             lastQuery: undefined,
             lastExtractionPath: undefined,
+            lastSoslQuery: undefined, // Inicializar nueva propiedad
+            lastSoslExtractionPath: undefined, // Inicializar nueva propiedad
         };
     }
 
@@ -65,6 +69,8 @@ export class SessionManager {
             targetOrgAlias: undefined,
             lastQuery: undefined,
             lastExtractionPath: undefined,
+            lastSoslQuery: undefined, // Reiniciar nueva propiedad
+            lastSoslExtractionPath: undefined, // Reiniciar nueva propiedad
         };
     }
 }

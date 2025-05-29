@@ -371,3 +371,24 @@ export async function extractDataQuery(conn: Connection, soqlQuery: string, data
 
   return { parentFile: parentOutputFile, childFiles };
 }
+/**
+ * Executes a SOSL query using the Salesforce REST API.
+ * @param connection jsforce Connection.
+ * @param soslQuery The SOSL query string.
+ * @returns A promise that resolves to an array of search result records.
+ */
+export async function executeSoslQuery(connection: Connection, soslQuery: string): Promise<any[]> { // El tipo de retorno podría ser más específico, ej. SearchResult o un tipo customizado
+    try {
+        logger.info(`Executing SOSL query: ${soslQuery}`);
+        const result = await connection.search(soslQuery);
+        // La API de JSForce devuelve 'searchRecords' que es un array de los registros encontrados.
+        // Cada elemento puede pertenecer a un SObject diferente.
+        // Es importante notar que connection.search() ya parsea el resultado JSON.
+        // El resultado directo de connection.search(soslQuery) es un objeto con una propiedad searchRecords que es un array.
+        // Ejemplo de un registro en searchRecords: {attributes: {type: 'Account', url: '/services/data/...'}, Id: '001...', Name: 'Test Account'}
+        return result.searchRecords || [];
+    } catch (error: any) {
+        logger.error(`Error executing SOSL query: ${error.message}`, error);
+        throw new Error(`SOSL Query execution failed: ${error.message}`);
+    }
+}

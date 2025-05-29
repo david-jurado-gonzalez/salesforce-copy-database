@@ -12,6 +12,7 @@ import {
     handleManageQueries,
     handleSuggestBackupQuery,
     handleSelectOrg,
+    handleExecuteSOSLQuery, // Añadir importación para el nuevo manejador
 } from './actionHandlers.js';
 import { Logger } from '../core/logger.js';
 import { AppConfig } from '../core/typeDefs.js'; // Importar AppConfig
@@ -29,6 +30,7 @@ export enum MainMenuChoices {
     ManageQueries = 'Gestionar Consultas',
     SuggestBackupQuery = 'Sugerir Query de Backup',
     ListObjects = 'Listar Objetos',
+    ExecuteSOSLQuery = 'Ejecutar Consulta SOSL', // Nueva opción de menú
     Exit = 'Salir',
 }
 
@@ -84,6 +86,9 @@ export async function startInteractiveMode(appConfig: AppConfig): Promise<void> 
                     break;
                 case MainMenuChoices.ListObjects:
                     await handleListObjects(currentState, appConfig); // Pasar appConfig
+                    break;
+                case MainMenuChoices.ExecuteSOSLQuery: // Nuevo case para SOSL
+                    await handleExecuteSOSLQuery(currentState, appConfig); // Llamar al nuevo manejador
                     break;
                 case MainMenuChoices.Exit:
                     logger.info('Saliendo del modo interactivo. ¡Hasta pronto!');

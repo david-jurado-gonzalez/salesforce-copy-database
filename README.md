@@ -1,3 +1,7 @@
+---
+creado: 2025-05-30
+actualizado: 2025-05-30
+---
 # Salesforce Database Copier
 
 Herramienta CLI para desarrolladores de Salesforce, diseñada para extraer y desplegar conjuntos de datos entre organizaciones, manteniendo la integridad de las relaciones sin necesidad de modificar el esquema.
@@ -23,6 +27,7 @@ Migrar datos entre entornos de Salesforce (ej: de Producción a una Sandbox, o e
 * **Extracción de Datos Asistida (Modo Interactivo):** Configura y ejecuta extracciones de datos complejas, incluyendo la gestión de consultas SOQL y la selección de API, de forma guiada. Consulta la [Guía de Extraer Datos (Modo Interactivo)](.localdevserver/ia-private/projects/salesforce-copy-database/docs/user_guides/interactive_mode/extract_data.md) para más detalles.
   * **¡Nuevo! Asistente Interactivo de Consultas SOQL:** Dentro de la extracción de datos en modo interactivo, ahora puedes construir tus consultas SOQL paso a paso. El asistente te ayuda a seleccionar SObjects, campos (incluyendo campos de relaciones) y a definir condiciones `WHERE`, minimizando errores y facilitando la exploración de datos.
 
+* **Soporte para Consultas SOSL:** Permite ejecutar búsquedas SOSL (Salesforce Object Search Language) directamente a través del comando `extract` usando el parámetro `--sosl`. Ideal para buscar términos específicos a través de múltiples SObjects simultáneamente. Los resultados de cada SObject encontrado se guardan en archivos CSV separados.
 ## Prerequisites
 
 Antes de empezar, asegúrate de tener instalado:
@@ -179,13 +184,14 @@ Las siguientes opciones se pueden usar con cualquier comando:
 
 ### `extract`
 
-Extrae datos de una organización de origen y los guarda localmente en formato CSV.
+Extrae datos de una organización de origen utilizando una consulta SOQL o una búsqueda SOSL y los guarda localmente en formato CSV.
 
 **Sintaxis:**
-`npm start -- extract --source <alias> --query <soql> [--config <ruta>]`
+`npm start -- extract --source <alias> (--query <soql> | --sosl <sosl_query>) [--api-type <type>] [--config <ruta>]`
 
   * `--source, -s`: El alias de la organización de origen (debe coincidir con un alias de SF CLI o una entrada en `config.json`).
-  * `--query, -q`: La consulta SOQL a ejecutar. **Debe ir entre comillas.**
+  * `--query, -q`: La consulta SOQL a ejecutar. **Debe ir entre comillas.** Mutuamente excluyente con `--sosl`.
+* `--sosl`: La consulta SOSL a ejecutar. **Debe ir entre comillas.** Mutuamente excluyente con `--query`. Permite búsquedas de texto libre a través de múltiples SObjects. Los resultados para cada SObject encontrado se guardarán en un archivo CSV separado dentro del directorio de datos de origen.
   * `--api-type, -a`: (Opcional) Fuerza el tipo de API a usar para la extracción. Valores posibles:
     * `auto` (por defecto): Intenta usar la API `BULK` por defecto. Si detecta características incompatibles con la API Bulk (como subconsultas en la SOQL), cambia automáticamente a la API `REST` (Query API) para ejecutar la consulta. Este cambio se informa en los logs.
     * `bulk`: Fuerza el uso de la API `BULK`. La herramienta intentará usar esta API incluso si la consulta contiene características no compatibles (ej. subconsultas), lo que probablemente resultará en un error por parte de Salesforce.
