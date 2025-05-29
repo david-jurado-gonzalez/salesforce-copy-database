@@ -19,6 +19,8 @@ Migrar datos entre entornos de Salesforce (ej: de Producción a una Sandbox, o e
   * **Interfaz de Usuario Clara:** Ofrece feedback constante con indicadores de progreso, logs de colores y resúmenes de operación.
   * **Seguro por Defecto:** Pide confirmación antes de ejecutar operaciones que modifiquen datos en un entorno de destino.
   * **Modo Interactivo Guiado:** Una interfaz paso a paso para configurar y ejecutar operaciones, incluyendo la gestión de consultas SOQL y la generación asistida de consultas para backups. Ideal para usuarios nuevos o para tareas complejas.
+  * **Listado Directo de Objetos:** Accede rápidamente a una lista de todos los SObjects disponibles en tu organización de origen a través del modo interactivo. Consulta la [Guía de Listar Objetos](.localdevserver/docs/user_guide/Modo_Interactivo_Listar_Objetos.md) para más detalles.
+* **Extracción de Datos Asistida (Modo Interactivo):** Configura y ejecuta extracciones de datos complejas, incluyendo la gestión de consultas SOQL y la selección de API, de forma guiada. Consulta la [Guía de Extraer Datos (Modo Interactivo)](.localdevserver/ia-private/projects/salesforce-copy-database/docs/user_guides/interactive_mode/extract_data.md) para más detalles.
 
 ## Prerequisites
 
