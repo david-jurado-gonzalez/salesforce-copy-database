@@ -263,6 +263,7 @@ beforeEach(async () => {
                 name: objectName,
                 label: objectName,
                 custom: false,
+                queryable: true, // Añadido
                 fields: [
                     { name: 'Id', label: 'Id', type: 'id', custom: false, updateable: false, createable: false, nillable: false, relationshipName: null, referenceTo: null },
                     { name: 'Name', label: 'Name', type: 'string', custom: false, updateable: true, createable: true, nillable: true, relationshipName: null, referenceTo: null },

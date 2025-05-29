@@ -9,6 +9,7 @@ import { deployData } from './commands/deployCommand.js';   // Importar la funci
 import { listObjects } from './commands/listObjectsCommand.js'; // Importar la función refactorizada
 import { Logger } from './core/logger.js'; // Importar la clase Logger
 import { InteractiveModeManager } from './interactive/InteractiveModeManager.js'; // Importar el gestor del modo interactivo
+import { AppConfig, DEFAULT_APP_CONFIG } from './core/typeDefs.js'; // Importar AppConfig y DEFAULT_APP_CONFIG
 
 const logger = new Logger('Main'); // Instanciar el logger
 
@@ -55,6 +56,33 @@ const initializeLogLevel = () => {
   
   logger.setLogLevel(finalLogLevel); // Usar el método de la instancia de Logger
 };
+
+/**
+ * Carga la configuración de la aplicación desde config.json o config.sample.json.
+ * @returns La configuración de la aplicación.
+ */
+async function loadAppConfig(): Promise<AppConfig> {
+  const configFilePath = path.resolve('./config.json');
+  const sampleConfigFilePath = path.resolve('./config.sample.json');
+  let config: AppConfig = DEFAULT_APP_CONFIG;
+
+  try {
+    if (fs.existsSync(configFilePath)) {
+      const configFileContent = fs.readFileSync(configFilePath, 'utf-8');
+      config = { ...config, ...JSON.parse(configFileContent) }; // Fusionar con valores por defecto
+      logger.info(`Configuración cargada desde ${configFilePath}`);
+    } else if (fs.existsSync(sampleConfigFilePath)) {
+      const sampleFileContent = fs.readFileSync(sampleConfigFilePath, 'utf-8');
+      config = { ...config, ...JSON.parse(sampleFileContent) }; // Fusionar con valores por defecto
+      logger.warn(`Archivo de configuración ${configFilePath} no encontrado. Usando ${sampleConfigFilePath}.`);
+    } else {
+      logger.warn('No se encontró config.json ni config.sample.json. Usando configuración por defecto.');
+    }
+  } catch (error: any) {
+    logger.error(`Error al cargar el archivo de configuración: ${error.message}. Usando configuración por defecto.`);
+  }
+  return config;
+}
 
 // Inicializar el nivel de log ANTES de definir los comandos y parsear.
 initializeLogLevel();
@@ -126,8 +154,9 @@ program
 program
   .command('interactive')
   .description('Inicia la herramienta en modo interactivo.')
-  .action(() => {
-    const interactiveMode = new InteractiveModeManager();
+  .action(async () => { // Hacer la acción asíncrona
+    const appConfig = await loadAppConfig(); // Cargar la configuración
+    const interactiveMode = new InteractiveModeManager(appConfig); // Pasar la configuración
     interactiveMode.start().catch(error => {
       logger.error(`Error en el modo interactivo: ${error.message}`);
       process.exit(1);
@@ -141,7 +170,8 @@ if (process.argv.length <= 2 || (process.argv.length === 3 && process.argv[2] ==
   // Aquí, si es 'interactive', ya lo maneja el .command('interactive').
   // Si no hay argumentos, también queremos el modo interactivo.
   if (process.argv.length <= 2) {
-    const interactiveMode = new InteractiveModeManager();
+    const appConfig = await loadAppConfig(); // Cargar la configuración
+    const interactiveMode = new InteractiveModeManager(appConfig); // Pasar la configuración
     interactiveMode.start().catch(error => {
       logger.error(`Error iniciando modo interactivo por defecto: ${error.message}`);
       process.exit(1);

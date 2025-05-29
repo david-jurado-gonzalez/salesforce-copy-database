@@ -39,6 +39,7 @@ describe('DependencyGraph', () => {
                 name: 'Account',
                 label: 'Account',
                 custom: false,
+                queryable: true,
                 fields: []
             };
             graph.addNode('Account', describe);
@@ -54,6 +55,7 @@ describe('DependencyGraph', () => {
                 name: 'Account',
                 label: 'Account',
                 custom: false,
+                queryable: true,
                 fields: []
             };
             graph.addNode('Account', describe);
@@ -67,6 +69,7 @@ describe('DependencyGraph', () => {
             name: 'Account',
             label: 'Account',
             custom: false,
+            queryable: true,
             fields: [
                 {
                     name: 'OwnerId',
@@ -85,6 +88,7 @@ describe('DependencyGraph', () => {
             name: 'Contact',
             label: 'Contact',
             custom: false,
+            queryable: true,
             fields: [
                 {
                     name: 'AccountId',
@@ -114,6 +118,7 @@ describe('DependencyGraph', () => {
             name: 'User',
             label: 'User',
             custom: false,
+            queryable: true,
             fields: []
         };
 
@@ -146,6 +151,7 @@ describe('DependencyGraph', () => {
                 name: 'Task',
                 label: 'Task',
                 custom: false,
+                queryable: true,
                 fields: [
                     {
                         name: 'WhatId',
@@ -164,6 +170,7 @@ describe('DependencyGraph', () => {
                 name: 'Opportunity',
                 label: 'Opportunity',
                 custom: false,
+                queryable: true,
                 fields: []
             };
             graph.addNode('Task', taskDescribe);
@@ -183,12 +190,14 @@ describe('DependencyGraph', () => {
             name: 'User',
             label: 'User',
             custom: false,
+            queryable: true,
             fields: []
         };
         const accountDescribe: SObjectDescribe = {
             name: 'Account',
             label: 'Account',
             custom: false,
+            queryable: true,
             fields: [
                 {
                     name: 'OwnerId',
@@ -207,6 +216,7 @@ describe('DependencyGraph', () => {
             name: 'Contact',
             label: 'Contact',
             custom: false,
+            queryable: true,
             fields: [
                 {
                     name: 'AccountId',
@@ -236,6 +246,7 @@ describe('DependencyGraph', () => {
             name: 'Opportunity',
             label: 'Opportunity',
             custom: false,
+            queryable: true,
             fields: [
                 {
                     name: 'AccountId',
@@ -281,6 +292,7 @@ describe('DependencyGraph', () => {
                 name: 'Account',
                 label: 'Account',
                 custom: false,
+                queryable: true,
                 fields: [
                     {
                         name: 'ContactId__c',
@@ -312,12 +324,14 @@ describe('DependencyGraph', () => {
             name: 'User',
             label: 'User',
             custom: false,
+            queryable: true,
             fields: []
         };
         const accountDescribe: SObjectDescribe = {
             name: 'Account',
             label: 'Account',
             custom: false,
+            queryable: true,
             fields: [
                 {
                     name: 'OwnerId',
@@ -336,6 +350,7 @@ describe('DependencyGraph', () => {
             name: 'Contact',
             label: 'Contact',
             custom: false,
+            queryable: true,
             fields: [
                 {
                     name: 'AccountId',
@@ -365,6 +380,7 @@ describe('DependencyGraph', () => {
             name: 'Opportunity',
             label: 'Opportunity',
             custom: false,
+            queryable: true,
             fields: [
                 {
                     name: 'AccountId',
@@ -409,6 +425,7 @@ describe('DependencyGraph', () => {
                 name: 'Account',
                 label: 'Account',
                 custom: false,
+                queryable: true,
                 fields: [
                     {
                         name: 'ContactId__c',
@@ -462,6 +479,7 @@ describe('DependencyGraph', () => {
                 name: 'Contact',
                 label: 'Contact',
                 custom: false,
+                queryable: true,
                 fields: [
                     {
                         name: 'AccountId',
@@ -491,6 +509,7 @@ describe('DependencyGraph', () => {
                 name: 'Opportunity',
                 label: 'Opportunity',
                 custom: false,
+                queryable: true,
                 fields: [
                     {
                         name: 'AccountId',

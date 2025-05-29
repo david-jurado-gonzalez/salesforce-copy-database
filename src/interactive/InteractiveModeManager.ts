@@ -6,6 +6,7 @@
 import { startInteractiveMode } from './menuDefinitions.js'; // Añadido .js
 import { SessionManager } from './sessionState.js'; // Añadido .js
 import { Logger } from '../core/logger.js'; // Añadido .js - Asumiendo que Logger está en ../core/logger
+import { AppConfig } from '../core/typeDefs.js'; // Importar AppConfig
 
 const logger = new Logger('InteractiveModeManager');
 
@@ -14,9 +15,11 @@ const logger = new Logger('InteractiveModeManager');
  */
 export class InteractiveModeManager {
     private sessionManager: SessionManager;
+    private appConfig: AppConfig; // Añadir propiedad para almacenar la configuración
 
-    constructor() {
+    constructor(appConfig: AppConfig) { // Aceptar AppConfig en el constructor
         this.sessionManager = SessionManager.getInstance();
+        this.appConfig = appConfig; // Guardar la configuración
     }
 
     /**
@@ -25,7 +28,7 @@ export class InteractiveModeManager {
     public async start(): Promise<void> {
         logger.info('Iniciando InteractiveModeManager...');
         this.sessionManager.resetState(); // Asegurarse de que el estado esté limpio al inicio
-        await startInteractiveMode();
+        await startInteractiveMode(this.appConfig); // Pasar la configuración a startInteractiveMode
         logger.info('InteractiveModeManager finalizado.');
     }
 }

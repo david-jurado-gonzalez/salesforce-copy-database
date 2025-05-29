@@ -29,6 +29,7 @@ describe('SFDC API Functions', () => {
                 name: 'Account',
                 label: 'Account',
                 custom: false,
+                queryable: true, // Añadido
                 fields: [{
                     name: 'Name',
                     type: 'string',

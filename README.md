@@ -18,7 +18,7 @@ Migrar datos entre entornos de Salesforce (ej: de Producción a una Sandbox, o e
   * **Despliegue en Dos Fases:** Maneja dependencias circulares o complejas mediante un proceso de inserción (`INSERT`) seguido de una actualización (`UPDATE`).
   * **Interfaz de Usuario Clara:** Ofrece feedback constante con indicadores de progreso, logs de colores y resúmenes de operación.
   * **Seguro por Defecto:** Pide confirmación antes de ejecutar operaciones que modifiquen datos en un entorno de destino.
-  * **Modo Interactivo Guiado:** Una interfaz paso a paso para configurar y ejecutar operaciones de extracción y despliegue, ideal para usuarios nuevos o para tareas complejas.
+  * **Modo Interactivo Guiado:** Una interfaz paso a paso para configurar y ejecutar operaciones, incluyendo la gestión de consultas SOQL y la generación asistida de consultas para backups. Ideal para usuarios nuevos o para tareas complejas.
 
 ## Prerequisites
 

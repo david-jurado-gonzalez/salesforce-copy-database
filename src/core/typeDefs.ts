@@ -24,6 +24,7 @@ export interface AppConfig {
     twoPassObjects?: string[]; // Opcional, para forzar 2 fases
     personAccountsEnabled?: boolean;
   };
+  logLevel?: string; // Añadido para permitir la configuración del nivel de log
 }
 
 export interface CommandOptions {
@@ -39,6 +40,14 @@ export interface CommandOptions {
   apiType?: 'auto' | 'bulk' | 'rest'; // Nuevo parámetro para el tipo de API de extracción
 }
 
+export const DEFAULT_APP_CONFIG: AppConfig = {
+  orgs: {},
+  jobConfig: {
+    personAccountsEnabled: false
+  },
+  logLevel: 'INFO'
+};
+
 // Interfaz para la descripción de un SObject de Salesforce
 
 export interface ChildRelationship {
@@ -52,22 +61,29 @@ export interface ChildRelationship {
   restrictedDelete: boolean;
 }
 
+export interface Field {
+  name: string;
+  label: string;
+  type: string;
+  custom: boolean;
+  updateable: boolean;
+  createable: boolean;
+  nillable: boolean;
+  unique?: boolean;
+  relationshipName: string | null | undefined;
+  referenceTo: string[] | null | undefined;
+  length?: number; // Añadido por si es útil, común en describe
+  precision?: number; // Añadido por si es útil
+  scale?: number; // Añadido por si es útil
+  picklistValues?: any[] | null; // Ajustado para ser compatible con jsforce
+}
+
 export interface SObjectDescribe {
   name: string;
   label: string;
   custom: boolean;
-  fields: {
-    name: string;
-    label: string;
-    type: string;
-    custom: boolean;
-    updateable: boolean;
-    createable: boolean;
-    nillable: boolean;
-    unique?: boolean; // Añadido para campos únicos
-    relationshipName: string | null | undefined;
-    referenceTo: string[] | null | undefined;
-  }[];
+  queryable: boolean; // <--- Añadido para solucionar error
+  fields: Field[]; // <--- Cambiado para usar la interfaz Field
   childRelationships?: ChildRelationship[]; // Usamos el tipo ChildRelationship
 }
 

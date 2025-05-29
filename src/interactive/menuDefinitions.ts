@@ -14,6 +14,7 @@ import {
     handleSelectOrg,
 } from './actionHandlers.js';
 import { Logger } from '../core/logger.js';
+import { AppConfig } from '../core/typeDefs.js'; // Importar AppConfig
 
 const logger = new Logger('InteractiveMode');
 
@@ -49,8 +50,9 @@ export async function promptMainMenu(): Promise<MainMenuChoices> {
 
 /**
  * Inicia el bucle principal del modo interactivo.
+ * @param appConfig La configuración de la aplicación.
  */
-export async function startInteractiveMode(): Promise<void> {
+export async function startInteractiveMode(appConfig: AppConfig): Promise<void> {
     const sessionManager = SessionManager.getInstance();
 
     logger.info('Iniciando el modo interactivo de Salesforce Data Copier.');
@@ -63,25 +65,25 @@ export async function startInteractiveMode(): Promise<void> {
         try {
             switch (choice) {
                 case MainMenuChoices.SelectSourceOrg:
-                    await handleSelectOrg('source');
+                    await handleSelectOrg('source', appConfig); // Pasar appConfig
                     break;
                 case MainMenuChoices.SelectTargetOrg:
-                    await handleSelectOrg('target');
+                    await handleSelectOrg('target', appConfig); // Pasar appConfig
                     break;
                 case MainMenuChoices.ExtractData:
-                    await handleExtractData(currentState);
+                    await handleExtractData(currentState, appConfig); // Pasar appConfig
                     break;
                 case MainMenuChoices.DeployData:
-                    await handleDeployData(currentState);
+                    await handleDeployData(currentState, appConfig); // Pasar appConfig
                     break;
                 case MainMenuChoices.ManageQueries:
-                    await handleManageQueries(currentState);
+                    await handleManageQueries(currentState, appConfig); // Pasar appConfig
                     break;
                 case MainMenuChoices.SuggestBackupQuery:
-                    await handleSuggestBackupQuery(currentState);
+                    await handleSuggestBackupQuery(currentState, appConfig); // Pasar appConfig
                     break;
                 case MainMenuChoices.ListObjects:
-                    await handleListObjects(currentState);
+                    await handleListObjects(currentState, appConfig); // Pasar appConfig
                     break;
                 case MainMenuChoices.Exit:
                     logger.info('Saliendo del modo interactivo. ¡Hasta pronto!');
