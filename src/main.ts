@@ -7,6 +7,7 @@ import path from 'path';
 import { extractCommand } from './commands/extractCommand.js';
 import { deployCommand } from './commands/deployCommand.js';
 import { logger, setLogLevel } from './core/logger.js'; // Importar logger y setLogLevel
+import { createListObjectsCommand } from './commands/listObjectsCommand.js';
 // import { listObjectsCommand } from './commands/listObjectsCommand';
 
 // Función para determinar y establecer el nivel de log
@@ -91,6 +92,9 @@ program
   .option('-c, --config <path>', 'Ruta al archivo de configuración', './config.json')
   .option('-f, --force', 'Saltar la confirmación de seguridad antes de desplegar', false)
   .action(deployCommand);
+
+// Comando para listar objetos
+program.addCommand(createListObjectsCommand());
   
 // Aquí añadirías el comando 'list-objects'
 

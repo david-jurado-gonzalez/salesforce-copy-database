@@ -97,17 +97,31 @@ export async function extractCommand(options: CommandOptions) {
     const queryHasSubquery = hasSubquery(options.query);
     let apiToUse: 'bulk' | 'rest';
 
-    if (options.apiType === 'bulk') {
-      if (queryHasSubquery) {
-        spinner.warn('La consulta contiene subconsultas, pero se ha forzado el uso de la API Bulk. Esto probablemente fallará.');
-      }
-      apiToUse = 'bulk';
-    } else if (options.apiType === 'rest') {
+    // 1. Prioridad de la Selección Manual
+    if (options.apiType === 'rest') {
       apiToUse = 'rest';
-    } else { // apiType es 'auto' o no está definido
-      apiToUse = queryHasSubquery ? 'rest' : 'bulk';
-      spinner.info(`Detección automática: La consulta ${queryHasSubquery ? 'contiene subconsultas' : 'no contiene subconsultas'}. Se usará la API ${apiToUse.toUpperCase()}.`);
+      logger.info('Se utilizará la API REST según la selección explícita del usuario (--apiType REST).');
+    } else if (options.apiType === 'bulk') {
+      apiToUse = 'bulk';
+      if (queryHasSubquery) {
+        logger.warn('ADVERTENCIA: La consulta contiene subconsultas, pero se ha forzado el uso de la API Bulk (--apiType BULK). La API de Salesforce podría rechazar esta consulta.');
+      } else {
+        logger.info('Se utilizará la API Bulk según la selección explícita del usuario (--apiType BULK).');
+      }
+    } else {
+      // 2. Detección de Incompatibilidad y Cambio Automático (apiType no especificado o es 'auto')
+      // Por defecto, se intenta BULK (Requisito 1)
+      if (queryHasSubquery) {
+        apiToUse = 'rest';
+        logger.info('Detección automática: Consulta con subconsultas identificada. Cambiando a API REST para su ejecución.');
+      } else {
+        // Aquí podrían ir otras comprobaciones de incompatibilidad con BULK en el futuro
+        apiToUse = 'bulk';
+        logger.info('Detección automática: La consulta parece compatible con API Bulk. Se utilizará API Bulk por defecto.');
+      }
     }
+    // El spinner.info original sobre la detección automática se ha movido a logger.info dentro de la lógica.
+    // El spinner.start en la línea 112 (ahora desplazada) ya indica la API que se usará.
 
     spinner.start(`Ejecutando consulta y extrayendo datos para '${mainObjectName}' usando la API ${apiToUse.toUpperCase()}...`);
 
