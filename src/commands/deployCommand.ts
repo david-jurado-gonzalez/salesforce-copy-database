@@ -1,5 +1,5 @@
-import { CommandOptions, AppConfig, IdMap, SObjectDescribe } from '../core/typeDefs.js';
-import { getSalesforceConnection } from '../core/auth.js';
+import { AppConfig, IdMap, SObjectDescribe } from '../core/typeDefs.js';
+import { Auth } from '../core/auth.js'; // Importar la clase Auth
 import {
   loadConfig,
   getOrgDataDir,
@@ -11,7 +11,7 @@ import {
   writeErrorLog,
   getObjectListFromDataDir,
 } from '../core/fileManager.js';
-import { logger } from '../core/logger.js';
+import { Logger } from '../core/logger.js'; // Importar la clase Logger
 import { describeSObject } from '../core/sfdc-api.js';
 import { DependencyGraph } from './dependencyGraph.js';
 import { Connection } from 'jsforce';
@@ -22,9 +22,12 @@ import path from 'path';
 import fs from 'fs';
 import { parse } from 'csv-parse';
 
+const logger = new Logger('DeployCommand');
+const auth = new Auth();
+
 /**
- * Este fichero es el núcleo de la herramienta y contiene la lógica más compleja: 
- *   el análisis de dependencias, el despliegue en dos fases y el manejo de los mapeos de IDs. 
+ * Este fichero es el núcleo de la herramienta y contiene la lógica más compleja:
+ *   el análisis de dependencias, el despliegue en dos fases y el manejo de los mapeos de IDs.
  * Añadida una documentación en formato JSDoc y comentarios en español para explicar cada paso.
  */
 
@@ -46,43 +49,52 @@ interface DeploymentSummary {
   };
 }
 
-// --- Función Principal del Comando ---
+/**
+ * Parámetros para la función de despliegue de datos.
+ */
+export interface DeployDataParams {
+  targetOrgAlias: string;
+  inputPath?: string; // Opcional para el modo interactivo, se puede inferir
+  force?: boolean;
+}
 
 /**
  * Orquesta el proceso completo de despliegue de datos.
- * @param options Opciones del comando proporcionadas por el usuario.
+ * @param params Parámetros del despliegue.
  */
-export async function deployCommand(options: CommandOptions): Promise<void> {
+export async function deployData(params: DeployDataParams): Promise<void> {
   logger.info(chalk.cyan('--- Iniciando Proceso de Despliegue de Datos ---'));
   const spinner = ora('Cargando configuración...').start();
 
   try {
     // --- 1. Inicialización y Validación ---
-    if (!options.target) {
-      throw new Error("La opción '--target' es obligatoria para el despliegue.");
+    if (!params.targetOrgAlias) {
+      throw new Error("El alias de la organización de destino es obligatorio para el despliegue.");
     }
 
-    const config = await loadConfig(options.config);
-    const { source: sourceAlias, target: targetAlias, force } = options;
+    const config = await loadConfig('./config.json'); // Cargar config.json por defecto
+    const { targetOrgAlias, inputPath, force } = params;
+    const sourceAlias = config.defaultSourceOrgAlias || 'defaultSourceOrg'; // Asumir un alias de origen si no se especifica
 
     spinner.stop();
-    await confirmDeployment(targetAlias, force);
+    await confirmDeployment(targetOrgAlias, force);
     spinner.start();
 
     // --- 2. Preparación del Entorno ---
     spinner.text = 'Preparando directorios de trabajo...';
-    await prepareWorkspace(targetAlias);
+    await prepareWorkspace(targetOrgAlias);
 
     spinner.text = 'Estableciendo conexiones con las organizaciones...';
     // Se necesita conexión al origen para obtener metadatos si no existen localmente
-    const sourceConn = await getSalesforceConnection(sourceAlias, config);
-    const targetConn = await getSalesforceConnection(targetAlias, config);
-    const context: DeploymentContext = { sourceAlias, targetAlias, sourceConn, targetConn, config };
+    const sourceConn = await auth.getSalesforceConnection(sourceAlias, config); // Usar la instancia de Auth
+    const targetConn = await auth.getSalesforceConnection(targetOrgAlias, config); // Usar la instancia de Auth
+    const context: DeploymentContext = { sourceAlias, targetAlias: targetOrgAlias, sourceConn, targetConn, config };
     spinner.succeed('Conexiones establecidas.');
 
     // --- 3. Análisis de Dependencias ---
     spinner.start('Analizando dependencias de objetos...');
-    const objectsToDeploy = await getObjectListFromDataDir(sourceAlias);
+    const dataDir = inputPath || getOrgDataDir(sourceAlias); // Usar inputPath si se proporciona
+    const objectsToDeploy = await getObjectListFromDataDir(dataDir);
     const { deploymentOrder, twoPassObjects } = await runDependencyAnalysis(context, objectsToDeploy);
     spinner.succeed(`Orden de despliegue calculado: ${chalk.yellow(deploymentOrder.join(' -> '))}`);
     if (twoPassObjects.size > 0) {
@@ -113,7 +125,7 @@ export async function deployCommand(options: CommandOptions): Promise<void> {
   } catch (error) {
     spinner.fail('El despliegue ha fallado.');
     logger.error((error as Error).message);
-    process.exit(1);
+    throw error; // Relanzar el error para que el modo interactivo lo capture
   }
 }
 
@@ -141,7 +153,7 @@ async function confirmDeployment(targetAlias: string, force: boolean | undefined
   ]);
   if (!confirm) {
     logger.warn('Despliegue cancelado por el usuario.');
-    process.exit(0);
+    throw new Error('Despliegue cancelado por el usuario.'); // Lanzar error en lugar de salir
   }
 }
 

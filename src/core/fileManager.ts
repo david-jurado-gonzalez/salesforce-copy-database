@@ -1,6 +1,8 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { logger } from './logger.js';
+import { Logger } from './logger.js';
+
+const logger = new Logger('FileManager');
 import { AppConfig, IdMap, OrgConfig, DEFAULT_ORG_CONFIG } from './typeDefs.js';
 import { Parser } from 'json2csv'; // Importar Parser de json2csv
 

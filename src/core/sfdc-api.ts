@@ -4,7 +4,9 @@ import { SObjectDescribe, ChildRelationship } from './typeDefs.js'; // Importar 
 import { createWriteStream } from 'fs';
 import path from 'path';
 import { Readable } from 'stream';
-import { logger } from './logger.js';
+import { Logger } from './logger.js';
+
+const logger = new Logger('SfdcApi');
 import { writeRecordsToCsv } from './fileManager.js'; // Se necesitará esta función
 
 // Caché para descripciones de SObject

@@ -1,66 +1,69 @@
-import { Command } from 'commander';
 import ora from 'ora';
 import { Connection, DescribeGlobalResult } from 'jsforce';
-import { logger } from '../core/logger.js';
+import { Logger } from '../core/logger.js'; // Importar la clase Logger
 import { loadConfig } from '../core/fileManager.js';
-import { getSalesforceConnection } from '../core/auth.js';
-import { CommandOptions, AppConfig } from '../core/typeDefs.js';
+import { Auth } from '../core/auth.js'; // Importar la clase Auth
+import { AppConfig } from '../core/typeDefs.js';
 
-// const logger = getLogger('listObjectsCommand'); // Original logger usage, replaced by direct logger import
+const logger = new Logger('ListObjectsCommand');
+const auth = new Auth();
 
-interface ListObjectsCommandOptions extends CommandOptions {
-  target: string;
-}
-
-async function listSObjects(conn: Connection): Promise<string[]> {
+/**
+ * Obtiene una lista de todos los SObjects "consultables" y "recuperables" de la organización.
+ * @param conn Conexión de jsforce.
+ * @returns Un array de strings con los nombres de los SObjects.
+ */
+async function listSObjectsInternal(conn: Connection): Promise<string[]> {
   const spinner = ora('Obteniendo lista de objetos...').start();
   try {
     const describeGlobalResult: DescribeGlobalResult = await conn.describeGlobal();
     spinner.succeed('Lista de objetos obtenida.');
     return describeGlobalResult.sobjects
-      .filter(sobject => sobject.queryable && sobject.retrieveable) // Filtrar solo objetos consultables y recuperables
+      .filter(sobject => sobject.queryable && sobject.retrieveable)
       .map(sobject => sobject.name);
   } catch (err: any) {
     spinner.fail('Error al obtener la lista de objetos.');
     logger.error('Error al ejecutar describeGlobal:', err.message);
-    throw err; // Re-lanzar para manejo superior
+    throw err;
   }
 }
 
-export async function listObjectsCommand(options: ListObjectsCommandOptions): Promise<void> {
-  logger.info('Iniciando el comando list-objects...');
-  logger.debug('Opciones recibidas:', options);
+/**
+ * Parámetros para la función de listado de objetos.
+ */
+export interface ListObjectsParams {
+  orgAlias: string;
+}
 
-  if (!options.target) {
-    logger.error("La opción '--target' es obligatoria.");
-    console.error("Error: La opción '--target <alias>' es obligatoria.");
-    process.exit(1);
+/**
+ * Función principal para listar objetos.
+ * Puede ser llamada desde la CLI o programáticamente.
+ * @param params Los parámetros para listar objetos.
+ * @returns Un array de strings con los nombres de los SObjects.
+ */
+export async function listObjects(params: ListObjectsParams): Promise<string[]> {
+  logger.info('Iniciando el listado de objetos...');
+  logger.debug('Parámetros recibidos:', params);
+
+  if (!params.orgAlias) {
+    throw new Error("El alias de la organización es obligatorio para listar objetos.");
   }
 
-  const spinner = ora(`Cargando configuración para el alias: ${options.target}...`).start();
+  const spinner = ora(`Cargando configuración para el alias: ${params.orgAlias}...`).start();
   let config: AppConfig;
   let conn: Connection;
 
   try {
-    config = await loadConfig();
+    config = await loadConfig('./config.json'); // Cargar config.json por defecto
     spinner.succeed('Configuración cargada.');
     logger.debug('Configuración de usuario cargada:', config);
 
-    const targetOrgAlias = options.target;
-    // const targetOrgConfig = config.orgs[targetOrgAlias]; // No se necesita para getSalesforceConnection
+    spinner.text = `Conectando a la organización Salesforce con alias: ${params.orgAlias}...`;
+    conn = await auth.getSalesforceConnection(params.orgAlias, config); // Usar la instancia de Auth
+    spinner.succeed(`Conexión exitosa a la organización: ${params.orgAlias}`);
+    logger.info(`Conexión exitosa a la organización: ${params.orgAlias}`);
 
-    // if (!targetOrgConfig) { // Comprobación movida a getSalesforceConnection o no necesaria si se usa SFDX
-    //   spinner.fail(`Error: Alias de organización '${targetOrgAlias}' no encontrado en la configuración.`);
-    //   logger.error(`Alias de organización '${targetOrgAlias}' no encontrado en la configuración.`);
-    //   process.exit(1);
-    // }
-
-    spinner.text = `Conectando a la organización Salesforce con alias: ${targetOrgAlias}...`;
-    conn = await getSalesforceConnection(targetOrgAlias, config); // Usar config directamente
-    spinner.succeed(`Conexión exitosa a la organización: ${targetOrgAlias}`);
-    logger.info(`Conexión exitosa a la organización: ${targetOrgAlias}`);
-
-    const sObjectNames = await listSObjects(conn);
+    const sObjectNames = await listSObjectsInternal(conn);
 
     if (sObjectNames.length > 0) {
       console.log('\nSObjects disponibles en la organización:');
@@ -69,24 +72,14 @@ export async function listObjectsCommand(options: ListObjectsCommandOptions): Pr
       console.log('No se encontraron SObjects consultables en la organización.');
     }
 
-    logger.info('Comando list-objects completado exitosamente.');
-    process.exit(0);
+    logger.info('Listado de objetos completado exitosamente.');
+    return sObjectNames;
   } catch (error: any) {
-    spinner.fail('Error durante la ejecución del comando list-objects.');
+    spinner.fail('Error durante el listado de objetos.');
     logger.error('Error detallado:', error.message);
     if (error.stack) {
       logger.debug('Stack trace:', error.stack);
     }
-    process.exit(1);
+    throw error; // Relanzar el error para que el modo interactivo lo capture
   }
 }
-
-export const createListObjectsCommand = (): Command => {
-  const command = new Command('list-objects')
-    .description('Lista todos los SObjects disponibles en la organización Salesforce de destino.')
-    .requiredOption('-t, --target <alias>', 'Alias de la organización Salesforce de destino')
-    .action(async (options: ListObjectsCommandOptions) => {
-      await listObjectsCommand(options);
-    });
-  return command;
-};

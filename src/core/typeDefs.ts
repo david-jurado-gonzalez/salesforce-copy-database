@@ -18,6 +18,7 @@ export const DEFAULT_ORG_CONFIG: OrgConfig = {
 
 export interface AppConfig {
   orgs: { [alias: string]: OrgConfig };
+  defaultSourceOrgAlias?: string; // Nuevo: Alias de la organización de origen por defecto
   jobConfig?: {
     deploymentOrder?: string[]; // Opcional, para forzar un orden
     twoPassObjects?: string[]; // Opcional, para forzar 2 fases

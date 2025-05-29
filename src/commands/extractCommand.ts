@@ -1,12 +1,16 @@
 // src/commands/extractCommand.ts
-import { getSalesforceConnection } from '../core/auth.js';
+// src/commands/extractCommand.ts
+import { Auth } from '../core/auth.js'; // Importar la clase Auth
 import { loadConfig, getOrgDataDir, ensureDir } from '../core/fileManager.js';
-import { logger } from '../core/logger.js';
+import { Logger } from '../core/logger.js'; // Importar la clase Logger
 import { CommandOptions, DEFAULT_ORG_CONFIG } from '../core/typeDefs.js';
-import { extractDataBulk, extractDataQuery } from '../core/sfdc-api.js'; // Importar nuevas funciones
+import { extractDataBulk, extractDataQuery } from '../core/sfdc-api.js';
 import ora from 'ora';
 import path from 'path';
 import { createWriteStream } from 'fs';
+
+const logger = new Logger('ExtractCommand');
+const auth = new Auth();
 
 // Función para detectar subconsultas en una cadena SOQL
 function hasSubquery(soql: string): boolean {
@@ -19,15 +23,15 @@ function hasSubquery(soql: string): boolean {
 
 // Helper function to extract the main SObject name from a SOQL query, handling subqueries.
 function extractMainSObjectNameFromQuery(soqlQuery: string): string | null {
-    const fromKeywordRegex = /\bFROM\b/gi; // Case-insensitive, global search for "FROM"
+    const fromKeywordRegex = /\bFROM\b/gi;
     let match;
 
     while ((match = fromKeywordRegex.exec(soqlQuery)) !== null) {
-        const fromStartIndex = match.index; // Index where "FROM" starts
+        const fromStartIndex = match.index;
         
         // Calculate parenthesis depth just before this "FROM" keyword
         let currentDepthBeforeFrom = 0;
-        for (let k = 0; k < fromStartIndex; k++) { // Corrected line
+        for (let k = 0; k < fromStartIndex; k++) {
             if (soqlQuery[k] === '(') {
                 currentDepthBeforeFrom++;
             } else if (soqlQuery[k] === ')') {
@@ -53,62 +57,73 @@ function extractMainSObjectNameFromQuery(soqlQuery: string): string | null {
         }
     }
     return null; // Should not be reached for a valid SOQL query with a FROM clause
+  }
+
+/**
+ * Parámetros para la función de extracción de datos.
+ */
+export interface ExtractDataParams {
+  sourceOrgAlias: string;
+  query: string;
+  outputPath?: string; // Opcional para el modo interactivo, se puede inferir
+  apiType?: 'bulk' | 'rest' | 'auto';
 }
 
-export async function extractCommand(options: CommandOptions) {
+/**
+ * Función principal para la extracción de datos.
+ * Puede ser llamada desde la CLI o programáticamente.
+ * @param params Los parámetros de extracción.
+ */
+export async function extractData(params: ExtractDataParams) {
   logger.info(`--- Iniciando Extracción de Datos ---`);
   const spinner = ora('Cargando configuración...').start();
 
   try {
-    let config = await loadConfig(options.config === '' ? undefined : options.config ? options.config : './config.json', {
-      username: options.username,
-      password: options.password,
-      loginUrl: options.loginUrl,
-      source: options.source,
-      target: options.target
-    });
-    const sourceAlias = options.source;
-
+    // La configuración se cargará de forma diferente si se llama desde la CLI
+    // Para el modo interactivo, asumimos que el alias ya está validado.
+    let config = await loadConfig('./config.json'); // Cargar config.json por defecto
     
-    // Permitimos que no exista la org en config - se usará la org por defecto de SFDX
-    if (!config || !config.orgs || !config.orgs[options.source]) {
-      logger.warn('No se encontró configuración de organización. Se utilizará la configuración por defecto o SFDX.');
-      config = config || { orgs: {} };
-      config.orgs[options.source] = { ...DEFAULT_ORG_CONFIG };
+    const sourceAlias = params.sourceOrgAlias;
+    const query = params.query;
+    const outputPath = params.outputPath || getOrgDataDir(sourceAlias); // Usar outputPath si se proporciona, sino el por defecto
+
+    // Asegurarse de que la organización de origen existe en la configuración o es un alias SFDX válido
+    if (!config || !config.orgs || !config.orgs[sourceAlias]) {
+      logger.warn(`No se encontró configuración de organización para '${sourceAlias}'. Se intentará usar SFDX.`);
+      // No es necesario añadir a config.orgs aquí, ya que Auth.getSalesforceConnection lo manejará.
     }
-    if (!options.query) {
-      throw new Error("La opción '--query' es obligatoria para la extracción.");
+    
+    if (!query) {
+      throw new Error("La consulta SOQL es obligatoria para la extracción.");
     }
 
     spinner.text = `Autenticando con la organización de origen: ${sourceAlias}...`;
-    const conn = await getSalesforceConnection(sourceAlias, config);
+    const conn = await auth.getSalesforceConnection(sourceAlias, config); // Usar la instancia de Auth
     spinner.succeed(`Autenticado con ${conn.instanceUrl}`);
 
-    const dataDir = getOrgDataDir(sourceAlias);
-    await ensureDir(dataDir);
+    await ensureDir(outputPath);
     
-    // Utilizar la nueva función para extraer el nombre del objeto principal
-    const mainObjectName = extractMainSObjectNameFromQuery(options.query);
+    const mainObjectName = extractMainSObjectNameFromQuery(query);
 
     if (!mainObjectName) {
       throw new Error("No se pudo determinar el objeto principal de la consulta SOQL. Verifique la sintaxis de su consulta.");
     }
     
-    const queryHasSubquery = hasSubquery(options.query);
+    const queryHasSubquery = hasSubquery(query);
     let apiToUse: 'bulk' | 'rest';
 
     // 1. Prioridad de la Selección Manual
-    if (options.apiType === 'rest') {
+    if (params.apiType === 'rest') {
       apiToUse = 'rest';
-      logger.info('Se utilizará la API REST según la selección explícita del usuario (--apiType REST).');
-    } else if (options.apiType === 'bulk') {
+      logger.info('Se utilizará la API REST según la selección explícita.');
+    } else if (params.apiType === 'bulk') {
       apiToUse = 'bulk';
       if (queryHasSubquery) {
-        logger.warn('ADVERTENCIA: La consulta contiene subconsultas, pero se ha forzado el uso de la API Bulk (--apiType BULK). La API de Salesforce podría rechazar esta consulta.');
+        logger.warn('ADVERTENCIA: La consulta contiene subconsultas, pero se ha forzado el uso de la API Bulk. La API de Salesforce podría rechazar esta consulta.');
       } else {
-        logger.info('Se utilizará la API Bulk según la selección explícita del usuario (--apiType BULK).');
+        logger.info('Se utilizará la API Bulk según la selección explícita.');
       }
-    } else {
+    } else { // apiType es 'auto' o no especificado
       // 2. Detección de Incompatibilidad y Cambio Automático (apiType no especificado o es 'auto')
       // Por defecto, se intenta BULK (Requisito 1)
       if (queryHasSubquery) {
@@ -126,8 +141,8 @@ export async function extractCommand(options: CommandOptions) {
     spinner.start(`Ejecutando consulta y extrayendo datos para '${mainObjectName}' usando la API ${apiToUse.toUpperCase()}...`);
 
     if (apiToUse === 'bulk') {
-      const outputFile = path.join(dataDir, `${mainObjectName}.csv`);
-      const recordStream = await extractDataBulk(conn, options.query, outputFile);
+      const outputFile = path.join(outputPath, `${mainObjectName}.csv`);
+      const recordStream = await extractDataBulk(conn, query, outputFile);
       
       let recordCount = 0;
       recordStream.on('data', (data: any) => { // Añadido tipo 'any' para evitar error implícito
@@ -143,14 +158,14 @@ export async function extractCommand(options: CommandOptions) {
     } else { // apiToUse === 'rest'
       // La lógica para la Query API (REST) se implementará en sfdc-api.ts
       // Aquí solo llamamos a la función y manejamos el resultado
-      const result = await extractDataQuery(conn, options.query, dataDir, mainObjectName);
-      spinner.succeed(`Extracción completada. Datos guardados en ${dataDir}.`);
-      // Aquí podrías añadir más detalles sobre los archivos generados si es necesario
+      const result = await extractDataQuery(conn, query, outputPath, mainObjectName);
+      spinner.succeed(`Extracción completada. Datos guardados en ${outputPath}.`);
     }
 
   } catch (error) {
     spinner.fail('La extracción ha fallado.');
     logger.error((error as Error).message);
-    process.exit(1);
+    // No hacer process.exit(1) aquí para permitir que el modo interactivo maneje el error
+    throw error; // Relanzar el error para que el modo interactivo lo capture
   }
 }

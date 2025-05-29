@@ -1,5 +1,7 @@
 import { SObjectDescribe } from '../core/typeDefs.js';
-import { logger } from '../core/logger.js';
+import { Logger } from '../core/logger.js';
+
+const logger = new Logger('DependencyGraph');
 
 /**
  * Este módulo es una de las piezas más "inteligentes" de la herramienta. Su responsabilidad es 
