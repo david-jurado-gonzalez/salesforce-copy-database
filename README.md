@@ -160,6 +160,19 @@ El objeto `jobConfig` permite configurar el comportamiento global:
 
 Todos los comandos se ejecutan a través de `node dist/src/main.js` o `npm start --`.
 
+### Opciones Globales
+
+Las siguientes opciones se pueden usar con cualquier comando:
+
+  * `-l, --loglevel <level>`: Especifica el nivel de verbosidad del log. Los niveles válidos son: `error`, `warn`, `info`, `http`, `verbose`, `debug`, `silly`.
+    * **Prioridad:** Este argumento de línea de comandos sobrescribe cualquier configuración de `logLevel` en el archivo `config.json`.
+    * **Archivo de Configuración:** Si no se proporciona `--loglevel`, la herramienta intentará leer la propiedad `logLevel` del archivo `config.json`.
+    * **Por Defecto:** Si no se especifica ni por línea de comandos ni en el archivo de configuración, el nivel de log por defecto es `WARN`.
+    * **Ejemplo:**
+      ```bash
+      node dist/src/main.js extract -s dev1 -q "SELECT Id FROM Account" -l debug
+      ```
+
 ### `extract`
 
 Extrae datos de una organización de origen y los guarda localmente en formato CSV.

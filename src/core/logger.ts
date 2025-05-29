@@ -17,22 +17,46 @@ const consoleFormat = printf(({ level, message, timestamp }) => {
 });
 
 export const logger = winston.createLogger({
-  level: 'debug', // Captura todos los niveles
+  level: 'info', // Nivel por defecto, se sobrescribirá
   format: combine(
     timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
     printf(({ level, message, timestamp }) => `${timestamp} ${level.toUpperCase()}: ${message}`)
   ),
   transports: [
-    // Escribe todos los logs de nivel 'debug' y superior en `debug.log`
-    new winston.transports.File({ filename: 'debug.log', level: 'debug' }),
+    new winston.transports.File({ filename: 'debug.log', level: 'info' }), // Nivel por defecto para archivo
   ],
 });
 
-// Añade un transporte de consola que solo muestra 'info' o superior por defecto
-// y que usa un formato más amigable y con colores.
-logger.add(
-  new winston.transports.Console({
-    level: 'debug', // Cambiado de 'info' a 'debug'
-    format: combine(colorize(), timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }), consoleFormat),
-  })
-);
+// Transporte de consola
+const consoleTransport = new winston.transports.Console({
+  level: 'info', // Nivel por defecto para consola
+  format: combine(colorize(), timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }), consoleFormat),
+});
+logger.add(consoleTransport);
+
+/**
+ * Establece el nivel de log para todos los transportes.
+ * @param newLevel El nuevo nivel de log (ej. 'debug', 'info', 'warn', 'error')
+ */
+export function setLogLevel(newLevel: string): void {
+  const validLevels = ['error', 'warn', 'info', 'http', 'verbose', 'debug', 'silly'];
+  if (!validLevels.includes(newLevel.toLowerCase())) {
+    console.warn(`Nivel de log inválido: "${newLevel}". Usando "info" por defecto.`);
+    newLevel = 'info';
+  }
+
+  logger.level = newLevel.toLowerCase();
+  logger.transports.forEach((transport) => {
+    transport.level = newLevel.toLowerCase();
+  });
+  // Caso especial para el transporte de archivo si se quiere mantener un nivel diferente o específico
+  // Por ahora, lo alineamos con el nivel global.
+  const fileTransport = logger.transports.find(t => t instanceof winston.transports.File);
+  if (fileTransport) {
+    fileTransport.level = newLevel.toLowerCase();
+  }
+  if (consoleTransport) {
+    consoleTransport.level = newLevel.toLowerCase();
+  }
+  logger.info(`Nivel de log establecido a: ${newLevel.toUpperCase()}`);
+}

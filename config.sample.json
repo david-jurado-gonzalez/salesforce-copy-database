@@ -21,5 +21,6 @@
   },
   "jobConfig": {
     "personAccountsEnabled": false
-  }
-}
+  },
+  "logLevel": "INFO"
+}}
