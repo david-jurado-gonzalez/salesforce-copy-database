@@ -1,6 +1,6 @@
 ---
 creado: 2025-05-29
-actualizado: 2025-05-29
+actualizado: 2025-05-30
 etiquetas: [salesforce-copy-database, guía de usuario, readme, documentación]
 ---
 
@@ -11,5 +11,6 @@ Esta sección contiene guías detalladas para las diferentes funcionalidades de 
 ## Documentos Disponibles
 
 *   **Modo Interactivo:**
+    *   [[interactive_mode/extract_data]]: Aprende a extraer datos de Salesforce, incluyendo el manejo automático de APIs.
     *   [[Modo_Interactivo_Gestion_Consultas]]: Aprende a gestionar tu historial de consultas SOQL directamente desde el modo interactivo.
-*   [[Modo_Interactivo_Sugerir_Query_Backup]]: Descubre cómo generar consultas SOQL para backups de forma asistida.
+    *   [[Modo_Interactivo_Sugerir_Query_Backup]]: Descubre cómo generar consultas SOQL para backups de forma asistida.

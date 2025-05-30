@@ -17,6 +17,75 @@ const sObjectUniqueFieldsCache = new Map<string, { name: string, type: string }[
 // Caché para los valores de los campos de visualización de IDs
 const idDisplayValueCache = new Map<string, Map<string, string>>(); // Map<SObjectName, Map<Id, DisplayValue>>
 
+// Nuevo caché para el tipo de API de SObject
+const sObjectApiTypeCache = new Map<string, 'standard' | 'tooling'>();
+
+// Lista de SObjects conocidos que son exclusivamente de la API de Tooling
+const TOOLING_API_SOBJECTS = new Set([
+  'ApexClass', 'ApexTrigger', 'ApexComponent', 'ApexPage',
+  'CustomField', 'Layout', 'ValidationRule', 'WorkflowRule',
+  'Flow', 'FlowDefinition', 'AuraDefinition', 'LightningComponentBundle',
+  'Profile', 'PermissionSet', 'RecordType', 'CompactLayout',
+  'EmailTemplate', 'Report', 'Dashboard', 'FlexiPage',
+  'CustomObject', 'CustomTab', 'ApexLog', 'DebugLog',
+  'UserLicense', 'UserPermissionAccess', 'ObjectPermissions',
+  'FieldPermissions', 'TabSet', 'ApexTestResult', 'ApexTestQueueItem',
+  'ApexTestRunResult', 'ApexCodeCoverage', 'ApexCodeCoverageAggregate',
+  'ApexOrgWideCoverage', 'ApexTestResultLimits', 'ApexTestResultOutcome'
+]);
+
+/**
+ * Extrae el nombre del SObject principal de una consulta SOQL.
+ * Asume un formato SOQL simple para la cláusula FROM.
+ * @param soqlQuery La consulta SOQL.
+ * @returns El nombre del SObject o undefined si no se encuentra.
+ */
+export function extractSObjectNameFromSoql(soqlQuery: string): string | undefined {
+  const fromClauseMatch = soqlQuery.match(/\bFROM\s+([a-zA-Z0-9_]+)/i);
+  if (fromClauseMatch && fromClauseMatch[1]) {
+    return fromClauseMatch[1];
+  }
+  return undefined;
+}
+
+/**
+ * Determina si un SObject debe ser consultado usando la API estándar o la API de Tooling.
+ * Utiliza caché, describeSObject y una lista de SObjects conocidos de Tooling API.
+ * @param conn Conexión de jsforce.
+ * @param sObjectName El nombre de API del SObject.
+ * @returns 'standard' o 'tooling'.
+ */
+export async function determineApiForSObject(conn: Connection, sObjectName: string): Promise<'standard' | 'tooling'> {
+  if (sObjectApiTypeCache.has(sObjectName)) {
+    logger.debug(`DEBUG: Usando caché para el tipo de API de ${sObjectName}: ${sObjectApiTypeCache.get(sObjectName)}`);
+    return sObjectApiTypeCache.get(sObjectName)!;
+  }
+
+  try {
+    const describe = await describeSObject(conn, sObjectName); // describeSObject ya tiene su propia caché
+    let apiType: 'standard' | 'tooling' = 'standard';
+
+    // Indicador definitivo: URL de Tooling API en la descripción
+    if (describe.url && describe.url.includes('/tooling/')) {
+      apiType = 'tooling';
+      logger.debug(`DEBUG: ${sObjectName} determinado como Tooling API por URL: ${describe.url}`);
+    } else if (TOOLING_API_SOBJECTS.has(sObjectName) && describe.queryable && describe.retrieveable) {
+      // Si está en la lista de conocidos y es consultable/recuperable
+      apiType = 'tooling';
+      logger.debug(`DEBUG: ${sObjectName} determinado como Tooling API por lista de conocidos y propiedades queryable/retrieveable.`);
+    } else {
+      logger.debug(`DEBUG: ${sObjectName} determinado como Standard API.`);
+    }
+
+    sObjectApiTypeCache.set(sObjectName, apiType);
+    return apiType;
+  } catch (error) {
+    logger.warn(`ADVERTENCIA: Fallo al determinar el tipo de API para ${sObjectName}. Asumiendo API estándar. Error: ${(error as Error).message}`);
+    sObjectApiTypeCache.set(sObjectName, 'standard'); // Cachear como estándar para evitar reintentos fallidos
+    return 'standard';
+  }
+}
+
 /**
  * Obtiene la descripción de metadatos de un SObject, utilizando caché.
  * @param conn Conexión de jsforce.
@@ -128,8 +197,28 @@ export async function extractDataQuery(conn: Connection, soqlQuery: string, data
   await ensureMetadata(mainObjectName);
   // const mainObjectDescribe = sObjectMetadataMap.get(mainObjectName)!.describe; // Se usará metadata.describe directamente
 
-  // Execute the original SOQL query
-  const records = await conn.query(soqlQuery);
+  // Extraer el nombre del SObject principal de la consulta
+  const mainObjectNameFromQuery = extractSObjectNameFromSoql(soqlQuery);
+  if (!mainObjectNameFromQuery) {
+    throw new Error('No se pudo extraer el nombre del SObject principal de la consulta SOQL.');
+  }
+
+  // Determinar qué API usar para el SObject principal
+  const apiTypeForMainObject = await determineApiForSObject(conn, mainObjectNameFromQuery);
+  logger.info(`Ejecutando consulta con ${apiTypeForMainObject.toUpperCase()} API para ${mainObjectNameFromQuery}: ${soqlQuery}`);
+
+  let records;
+  try {
+    if (apiTypeForMainObject === 'tooling') {
+      records = await conn.tooling.query(soqlQuery);
+    } else {
+      records = await conn.query(soqlQuery);
+    }
+  } catch (error) {
+    logger.error(`ERROR: Fallo al ejecutar la consulta SOQL con ${apiTypeForMainObject.toUpperCase()} API para ${mainObjectNameFromQuery}: ${(error as Error).message}`);
+    throw error;
+  }
+
   const parentRecords: any[] = [];
   const childRecordsMap: { [childObjectName: string]: any[] } = {};
   const childFiles: string[] = [];
@@ -283,12 +372,18 @@ export async function extractDataQuery(conn: Connection, soqlQuery: string, data
         uniqueNillableFalseFields.forEach(f => fieldsToQuery.push(f.name));
 
         const query = `SELECT ${fieldsToQuery.join(',')} FROM ${objName} WHERE Id IN ('${batchIds.join("','")}')`;
-        logger.debug(`DEBUG: Consultando campos de visualización/únicos para ${objName}: ${query}`);
-        let displayRecords; // Declare displayRecords outside try block
+        // Determinar qué API usar para el SObject relacionado
+        const apiTypeForRelatedObject = await determineApiForSObject(conn, objName);
+        logger.debug(`DEBUG: Consultando campos de visualización/únicos para ${objName} con ${apiTypeForRelatedObject.toUpperCase()} API: ${query}`);
+        let displayRecords;
         try {
-          displayRecords = await conn.query(query);
+          if (apiTypeForRelatedObject === 'tooling') {
+            displayRecords = await conn.tooling.query(query);
+          } else {
+            displayRecords = await conn.query(query);
+          }
         } catch (error) {
-          logger.error(`ERROR: Fallo al consultar campos de visualización/únicos para ${objName} con la query "${query}": ${(error as Error).message}`);
+          logger.error(`ERROR: Fallo al consultar campos de visualización/únicos para ${objName} con la query "${query}" usando ${apiTypeForRelatedObject.toUpperCase()} API: ${(error as Error).message}`);
           throw error;
         }
 

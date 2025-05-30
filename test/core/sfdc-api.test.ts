@@ -30,6 +30,7 @@ describe('SFDC API Functions', () => {
                 label: 'Account',
                 custom: false,
                 queryable: true, // Añadido
+                retrieveable: true,
                 fields: [{
                     name: 'Name',
                     type: 'string',

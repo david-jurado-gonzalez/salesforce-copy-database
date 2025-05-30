@@ -40,6 +40,7 @@ describe('DependencyGraph', () => {
                 label: 'Account',
                 custom: false,
                 queryable: true,
+                retrieveable: true,
                 fields: []
             };
             graph.addNode('Account', describe);
@@ -55,6 +56,7 @@ describe('DependencyGraph', () => {
                 name: 'Account',
                 label: 'Account',
                 custom: false,
+                retrieveable: true,
                 queryable: true,
                 fields: []
             };
@@ -68,6 +70,7 @@ describe('DependencyGraph', () => {
         const accountDescribe: SObjectDescribe = {
             name: 'Account',
             label: 'Account',
+            retrieveable: true,
             custom: false,
             queryable: true,
             fields: [
@@ -87,6 +90,7 @@ describe('DependencyGraph', () => {
         const contactDescribe: SObjectDescribe = {
             name: 'Contact',
             label: 'Contact',
+            retrieveable: true,
             custom: false,
             queryable: true,
             fields: [
@@ -117,6 +121,7 @@ describe('DependencyGraph', () => {
         const userDescribe: SObjectDescribe = {
             name: 'User',
             label: 'User',
+            retrieveable: true,
             custom: false,
             queryable: true,
             fields: []
@@ -150,6 +155,7 @@ describe('DependencyGraph', () => {
             const taskDescribe: SObjectDescribe = {
                 name: 'Task',
                 label: 'Task',
+                retrieveable: true,
                 custom: false,
                 queryable: true,
                 fields: [
@@ -169,6 +175,7 @@ describe('DependencyGraph', () => {
             const opportunityDescribe: SObjectDescribe = {
                 name: 'Opportunity',
                 label: 'Opportunity',
+                retrieveable: true,
                 custom: false,
                 queryable: true,
                 fields: []
@@ -189,6 +196,7 @@ describe('DependencyGraph', () => {
         const userDescribe: SObjectDescribe = {
             name: 'User',
             label: 'User',
+            retrieveable: true,
             custom: false,
             queryable: true,
             fields: []
@@ -197,6 +205,7 @@ describe('DependencyGraph', () => {
             name: 'Account',
             label: 'Account',
             custom: false,
+            retrieveable: true,
             queryable: true,
             fields: [
                 {
@@ -216,6 +225,7 @@ describe('DependencyGraph', () => {
             name: 'Contact',
             label: 'Contact',
             custom: false,
+                retrieveable: true,
             queryable: true,
             fields: [
                 {
@@ -246,6 +256,7 @@ describe('DependencyGraph', () => {
             name: 'Opportunity',
             label: 'Opportunity',
             custom: false,
+                retrieveable: true,
             queryable: true,
             fields: [
                 {
@@ -292,6 +303,7 @@ describe('DependencyGraph', () => {
                 name: 'Account',
                 label: 'Account',
                 custom: false,
+                retrieveable: true,
                 queryable: true,
                 fields: [
                     {
@@ -325,12 +337,14 @@ describe('DependencyGraph', () => {
             label: 'User',
             custom: false,
             queryable: true,
+            retrieveable: true, // Añadido para corregir el error de compilación
             fields: []
         };
         const accountDescribe: SObjectDescribe = {
             name: 'Account',
             label: 'Account',
             custom: false,
+            retrieveable: true,
             queryable: true,
             fields: [
                 {
@@ -350,6 +364,7 @@ describe('DependencyGraph', () => {
             name: 'Contact',
             label: 'Contact',
             custom: false,
+            retrieveable: true,
             queryable: true,
             fields: [
                 {
@@ -380,6 +395,7 @@ describe('DependencyGraph', () => {
             name: 'Opportunity',
             label: 'Opportunity',
             custom: false,
+            retrieveable: true,
             queryable: true,
             fields: [
                 {
@@ -425,6 +441,7 @@ describe('DependencyGraph', () => {
                 name: 'Account',
                 label: 'Account',
                 custom: false,
+                retrieveable: true,
                 queryable: true,
                 fields: [
                     {
@@ -479,6 +496,7 @@ describe('DependencyGraph', () => {
                 name: 'Contact',
                 label: 'Contact',
                 custom: false,
+                retrieveable: true,
                 queryable: true,
                 fields: [
                     {
@@ -509,6 +527,7 @@ describe('DependencyGraph', () => {
                 name: 'Opportunity',
                 label: 'Opportunity',
                 custom: false,
+                retrieveable: true,
                 queryable: true,
                 fields: [
                     {

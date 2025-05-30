@@ -82,9 +82,11 @@ export interface SObjectDescribe {
   name: string;
   label: string;
   custom: boolean;
-  queryable: boolean; // <--- Añadido para solucionar error
-  fields: Field[]; // <--- Cambiado para usar la interfaz Field
-  childRelationships?: ChildRelationship[]; // Usamos el tipo ChildRelationship
+  queryable: boolean;
+  retrieveable: boolean; // Añadido para soportar la detección de Tooling API
+  url?: string; // Añadido para soportar la detección de Tooling API (describe.url)
+  fields: Field[];
+  childRelationships?: ChildRelationship[];
 }
 
 // Interfaz para la información de los alias de organización

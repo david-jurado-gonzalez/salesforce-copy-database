@@ -51,7 +51,7 @@ A continuación, se te pedirá que introduzcas la consulta SOQL o SOSL que desea
 Introduce la consulta SOQL para la extracción (ej: SELECT Name FROM Account):
 ```
 
-*   **Consultas SOQL:** Puedes introducir cualquier consulta SOQL válida, incluyendo subconsultas (relaciones padre-hijo). La herramienta detectará automáticamente si se necesitan subconsultas y ajustará la API de extracción.
+*   **Consultas SOQL:** Puedes introducir cualquier consulta SOQL válida, incluyendo subconsultas (relaciones padre-hijo). La herramienta detectará automáticamente si se necesitan subconsultas y ajustará la API de extracción. Además, si la consulta se dirige a un SObject que solo es accesible a través de la API de Herramientas (Tooling API), la herramienta cambiará automáticamente a esta API para ejecutar la consulta, sin necesidad de intervención manual.
 *   **Consultas SOSL:** Para realizar búsquedas de texto libre, introduce una consulta SOSL. Los resultados se guardarán en archivos CSV separados por cada SObject encontrado.
 
 ### Asistente Interactivo de Consultas SOQL
@@ -66,7 +66,7 @@ La herramienta te preguntará si deseas forzar un tipo de API específico para l
 ¿Quieres forzar un tipo de API específico (auto/bulk/rest)? (Presiona Enter para 'auto'):
 ```
 
-*   `auto` (por defecto): La herramienta intentará usar la API `BULK` por defecto. Si detecta características incompatibles con la API Bulk (como subconsultas en la SOQL), cambia automáticamente a la API `REST` (Query API).
+*   `auto` (por defecto): La herramienta intentará usar la API `BULK` por defecto. Si detecta características incompatibles con la API Bulk (como subconsultas en la SOQL) o si el SObject de la consulta requiere la API de Herramientas, cambiará automáticamente a la API `REST` (Query API) o a la API de Herramientas, respectivamente.
 *   `bulk`: Fuerza el uso de la API `BULK`.
 *   `rest`: Fuerza el uso de la API `REST` (Query API).
 

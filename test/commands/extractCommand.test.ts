@@ -153,7 +153,7 @@ describe('extractCommand', () => {
     });
 
     it('should attempt to use default org if source alias is not in config', async () => {
-        const options: ExtractDataParams = { sourceOrgAlias: 'nonExistentOrg', query: 'SELECT Id FROM Account' };
+        const options: ExtractDataParams = { username: 'nonExistentOrg', query: 'SELECT Id FROM Account' };
         loadConfigStub.resolves({ orgs: {} }); // No orgs defined
 
         const mockBulkQueryStream = new EventEmitter();
@@ -174,7 +174,7 @@ describe('extractCommand', () => {
     });
 
     it('should throw error if --query option is missing', async () => {
-        const options: ExtractDataParams = { sourceOrgAlias: 'source', query: '' }; // Query is required, add empty for now, will be checked by test
+        const options: ExtractDataParams = { username: 'source', query: '' }; // Query is required, add empty for now, will be checked by test
         await expect(extractCommandModule.extractData(options as any)).to.be.rejectedWith(
             "La opción '--query' es obligatoria para la extracción."
         );
@@ -184,7 +184,7 @@ describe('extractCommand', () => {
     });
 
     it('should throw error if SOQL query does not contain FROM clause', async () => {
-        const options: ExtractDataParams = { sourceOrgAlias: 'source', query: 'SELECT Id' };
+        const options: ExtractDataParams = { username: 'source', query: 'SELECT Id' };
         await expect(extractCommandModule.extractData(options)).to.be.rejectedWith(
             "No se pudo determinar el objeto principal de la consulta SOQL."
         );
@@ -194,7 +194,7 @@ describe('extractCommand', () => {
     });
 
     it('should successfully extract data and save to CSV', async () => {
-        const options: ExtractDataParams = { sourceOrgAlias: 'source', query: 'SELECT Id, Name FROM Account' };
+        const options: ExtractDataParams = { username: 'source', query: 'SELECT Id, Name FROM Account' };
         const mockRecords = [{ Id: '001', Name: 'Test1' }, { Id: '002', Name: 'Test2' }];
         
         const mockBulkQueryStream = new EventEmitter();
@@ -237,7 +237,7 @@ describe('extractCommand', () => {
     });
 
     it('should handle errors during bulk query stream', async () => {
-        const options: ExtractDataParams = { sourceOrgAlias: 'source', query: 'SELECT Id FROM NonExistentObject' };
+        const options: ExtractDataParams = { username: 'source', query: 'SELECT Id FROM NonExistentObject' };
         const mockBulkQueryStream = new EventEmitter();
         (mockBulkQueryStream as any).pipe = sandbox.stub().returnsThis();
         connBulkQueryStub.resolves({ stream: () => mockBulkQueryStream });
