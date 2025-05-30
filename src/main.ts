@@ -7,6 +7,7 @@ import path from 'path';
 import { extractData } from './commands/extractCommand.js'; // Importar la función refactorizada
 import { deployData } from './commands/deployCommand.js';   // Importar la función refactorizada
 import { listObjects } from './commands/listObjectsCommand.js'; // Importar la función refactorizada
+import { backupData } from './commands/backupCommand.js'; // Importar la función para el comando backup
 import { Logger } from './core/logger.js'; // Importar la clase Logger
 import { InteractiveModeManager } from './interactive/InteractiveModeManager.js'; // Importar el gestor del modo interactivo
 import { AppConfig, DEFAULT_APP_CONFIG } from './core/typeDefs.js'; // Importar AppConfig y DEFAULT_APP_CONFIG
@@ -153,6 +154,69 @@ program
       await listObjects({ orgAlias: options.org });
     } catch (error: any) {
       logger.error(`Error en el comando de listado de objetos: ${error.message}`);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('backup')
+  .description('Crea un backup de datos y metadatos de una organización de Salesforce.')
+  .option('-u, --username <username>', 'Nombre de usuario o alias de la organización de origen')
+  .option('-a, --target-alias <alias>', 'Alias específico de la organización de origen (tiene precedencia sobre -u)')
+  .requiredOption('-o, --output-dir <path>', 'Directorio de salida para el backup', './backup')
+  .option('-m, --manifest <path>', 'Ruta al archivo backup-manifest.json (opcional, para especificar uno existente o ubicación no estándar)')
+  .option('--include-metadata', 'Incluir metadatos (descripciones de SObject y grafo de dependencia)', false)
+  .option('--data-only', 'Extraer solo datos (ignora --include-metadata y --metadata-only si se establece)', false)
+  .option('--metadata-only', 'Extraer solo metadatos (ignora --data-only si se establece, implica --include-metadata)', false)
+  .option('--api-version <version>', 'Versión de la API de Salesforce a utilizar')
+  .option('--max-file-size <size>', 'Tamaño máximo de archivo para los CSV de datos (ej. 100MB, 1GB)', '250MB')
+  .option('--exclude-fields <fields>', 'Lista de campos a excluir, separados por comas (ej. "CreatedDate,LastModifiedDate")')
+  .option('--sobjects <objects>', 'Lista de SObjects a incluir, separados por comas (ej. "Account,Contact,MyCustomObject__c")')
+  .option('--all-sobjects', 'Incluir todos los SObjects recuperables (puede tardar mucho)', false)
+  .option('--name-fields-only', 'Incluir solo campos de nombre para registros relacionados en los CSV de datos', false)
+  .action(async (options) => {
+    if (!options.username && !options.targetAlias) {
+      logger.error('Error: Debe proporcionar un alias de origen con -a (--target-alias) o un nombre de usuario/alias con -u (--username).');
+      process.exit(1);
+    }
+    // Validar combinaciones de flags de datos/metadatos
+    if (options.dataOnly && options.metadataOnly) {
+        logger.error('Error: No puede especificar --data-only y --metadata-only simultáneamente.');
+        process.exit(1);
+    }
+    if (options.dataOnly && options.includeMetadata) {
+        logger.warn('Advertencia: --data-only está establecido, por lo que --include-metadata será ignorado.');
+        options.includeMetadata = false; // Asegurar que no se procesen metadatos
+    }
+    if (options.metadataOnly) {
+        options.includeMetadata = true; // --metadata-only implica --include-metadata
+    }
+
+
+    try {
+      // Determinar el identificador de la organización de origen
+      const sourceOrgIdentifier = options.targetAlias || options.username;
+      if (!sourceOrgIdentifier) { // Doble verificación, aunque la CLI ya lo hace.
+          logger.error('Error fatal: No se proporcionó identificador de organización de origen.');
+          process.exit(1);
+      }
+
+      await backupData({
+        sourceOrgIdentifier: sourceOrgIdentifier, // Usar el identificador combinado
+        outputDir: options.outputDir,
+        manifestPath: options.manifest,
+        includeMetadata: options.includeMetadata,
+        dataOnly: options.dataOnly,
+        metadataOnly: options.metadataOnly,
+        apiVersion: options.apiVersion,
+        maxFileSize: options.maxFileSize,
+        excludeFields: options.excludeFields ? options.excludeFields.split(',').map((f: string) => f.trim()) : undefined,
+        sObjectList: options.sobjects ? options.sobjects.split(',').map((s: string) => s.trim()) : undefined,
+        allSObjects: options.allSobjects, // El nombre de la opción en CLI es allSobjects
+        nameFieldsOnly: options.nameFieldsOnly,
+      });
+    } catch (error: any) {
+      logger.error(`Error en el comando de backup: ${error.message}`);
       process.exit(1);
     }
   });

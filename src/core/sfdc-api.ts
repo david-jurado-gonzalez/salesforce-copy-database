@@ -1,6 +1,6 @@
 // src/core/sfdc-api.ts
 import { Connection } from 'jsforce';
-import { SObjectDescribe, ChildRelationship } from './typeDefs.js'; // Importar ChildRelationship
+import { SObjectDescribe, ChildRelationship, Field } from './typeDefs.js'; // Importar ChildRelationship y Field
 import { createWriteStream } from 'fs';
 import path from 'path';
 import { Readable } from 'stream';
@@ -98,10 +98,49 @@ export async function describeSObject(conn: Connection, objectName: string): Pro
     return sObjectDescribeCache.get(objectName)!;
   }
   try {
-    const describe = await conn.sobject(objectName).describe();
-    sObjectDescribeCache.set(objectName, describe);
-    logger.debug(`DEBUG: Descripción de ${objectName} obtenida y cacheada.`);
-    return describe;
+    const describeFromJsforce = await conn.sobject(objectName).describe();
+
+    const transformedFields: Field[] = describeFromJsforce.fields.map(jsforceField => {
+        const jsforceFieldAsAny = jsforceField as any;
+        return {
+            // Asignar propiedades directamente si los nombres y tipos básicos coinciden
+            name: jsforceField.name,
+            label: jsforceField.label,
+            type: jsforceField.type, // Asumimos que el tipo 'string' es compatible
+            custom: jsforceField.custom,
+            updateable: jsforceField.updateable,
+            createable: jsforceField.createable,
+            nillable: jsforceField.nillable,
+            relationshipName: jsforceField.relationshipName,
+            referenceTo: jsforceField.referenceTo,
+            // Añadir explícitamente 'queryable', con un valor por defecto si no es booleano
+            queryable: typeof jsforceFieldAsAny.queryable === 'boolean' ? jsforceFieldAsAny.queryable : false,
+        } as Field; // Forzar el tipo al de nuestra interfaz Field
+    });
+
+    const finalDescribe: SObjectDescribe = {
+        // Propiedades de jsforce.DescribeSObjectResult que son compatibles con SObjectDescribe
+        name: describeFromJsforce.name,
+        label: describeFromJsforce.label,
+        custom: describeFromJsforce.custom,
+        queryable: describeFromJsforce.queryable, // Nivel SObject
+        retrieveable: describeFromJsforce.retrieveable,
+        keyPrefix: describeFromJsforce.keyPrefix, // Compatible
+        labelPlural: describeFromJsforce.labelPlural,
+        feedEnabled: describeFromJsforce.feedEnabled,
+        
+        // Propiedades transformadas o ajustadas
+        fields: transformedFields,
+        
+        // Propiedades opcionales en SObjectDescribe, mapeadas desde jsforce
+        childRelationships: describeFromJsforce.childRelationships ? describeFromJsforce.childRelationships as ChildRelationship[] : undefined,
+        url: describeFromJsforce.urls?.describe, // Corregido: tomar la URL 'describe' del objeto 'urls'
+        recordTypeInfos: describeFromJsforce.recordTypeInfos ? describeFromJsforce.recordTypeInfos as any[] : undefined, // Nuestro 'recordTypeInfos' es 'any[]'
+    };
+
+    sObjectDescribeCache.set(objectName, finalDescribe);
+    logger.debug(`DEBUG: Descripción de ${objectName} obtenida, transformada y cacheada.`);
+    return finalDescribe;
   } catch (error) {
     logger.error(`ERROR: Fallo al describir el objeto ${objectName}: ${(error as Error).message}`);
     throw error;

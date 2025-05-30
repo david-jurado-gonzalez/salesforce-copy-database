@@ -262,18 +262,21 @@ beforeEach(async () => {
             const mockDescribe: SObjectDescribe = {
                 name: objectName,
                 label: objectName,
+                labelPlural: `${objectName}s`, // Default plural
+                keyPrefix: '000', // Default keyPrefix
+                feedEnabled: false, // Default feedEnabled
                 custom: false,
                 queryable: true, // Añadido
                 retrieveable: true,
                 fields: [
-                    { name: 'Id', label: 'Id', type: 'id', custom: false, updateable: false, createable: false, nillable: false, relationshipName: null, referenceTo: null },
-                    { name: 'Name', label: 'Name', type: 'string', custom: false, updateable: true, createable: true, nillable: true, relationshipName: null, referenceTo: null },
+                    { name: 'Id', label: 'Id', type: 'id', custom: false, updateable: false, createable: false, nillable: false, queryable: true, relationshipName: null, referenceTo: null },
+                    { name: 'Name', label: 'Name', type: 'string', custom: false, updateable: true, createable: true, nillable: true, queryable: true, relationshipName: null, referenceTo: null },
                 ]
             };
             if (objectName === 'Account') {
-                mockDescribe.fields.push({ name: 'OwnerId', label: 'Owner ID', type: 'reference', custom: false, updateable: true, createable: true, nillable: true, relationshipName: 'Owner', referenceTo: ['User'] });
+                mockDescribe.fields.push({ name: 'OwnerId', label: 'Owner ID', type: 'reference', custom: false, updateable: true, createable: true, nillable: true, queryable: true, relationshipName: 'Owner', referenceTo: ['User'] });
             } else if (objectName === 'Contact') {
-                mockDescribe.fields.push({ name: 'AccountId', label: 'Account ID', type: 'reference', custom: false, updateable: true, createable: true, nillable: true, relationshipName: 'Account', referenceTo: ['Account'] });
+                mockDescribe.fields.push({ name: 'AccountId', label: 'Account ID', type: 'reference', custom: false, updateable: true, createable: true, nillable: true, queryable: true, relationshipName: 'Account', referenceTo: ['Account'] });
             }
             return Promise.resolve(mockDescribe);
         });

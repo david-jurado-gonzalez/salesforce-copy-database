@@ -38,6 +38,9 @@ describe('DependencyGraph', () => {
             const describe: SObjectDescribe = {
                 name: 'Account',
                 label: 'Account',
+                labelPlural: 'Accounts',
+                keyPrefix: '001',
+                feedEnabled: false,
                 custom: false,
                 queryable: true,
                 retrieveable: true,
@@ -55,6 +58,9 @@ describe('DependencyGraph', () => {
             const describe: SObjectDescribe = {
                 name: 'Account',
                 label: 'Account',
+                labelPlural: 'Accounts',
+                keyPrefix: '001',
+                feedEnabled: false,
                 custom: false,
                 retrieveable: true,
                 queryable: true,
@@ -70,6 +76,9 @@ describe('DependencyGraph', () => {
         const accountDescribe: SObjectDescribe = {
             name: 'Account',
             label: 'Account',
+            labelPlural: 'Accounts',
+            keyPrefix: '001',
+            feedEnabled: false,
             retrieveable: true,
             custom: false,
             queryable: true,
@@ -81,6 +90,7 @@ describe('DependencyGraph', () => {
                     updateable: true,
                     createable: true,
                     nillable: true,
+                    queryable: true,
                     relationshipName: 'Owner',
                     referenceTo: ['User'],
                     custom: false
@@ -90,6 +100,9 @@ describe('DependencyGraph', () => {
         const contactDescribe: SObjectDescribe = {
             name: 'Contact',
             label: 'Contact',
+            labelPlural: 'Contacts',
+            keyPrefix: '003',
+            feedEnabled: false,
             retrieveable: true,
             custom: false,
             queryable: true,
@@ -101,6 +114,7 @@ describe('DependencyGraph', () => {
                     updateable: true,
                     createable: true,
                     nillable: true,
+                    queryable: true,
                     relationshipName: 'Account',
                     referenceTo: ['Account'],
                     custom: false
@@ -112,6 +126,7 @@ describe('DependencyGraph', () => {
                     updateable: true,
                     createable: true,
                     nillable: true,
+                    queryable: true,
                     relationshipName: 'Owner',
                     referenceTo: ['User'],
                     custom: false
@@ -121,6 +136,9 @@ describe('DependencyGraph', () => {
         const userDescribe: SObjectDescribe = {
             name: 'User',
             label: 'User',
+            labelPlural: 'Users',
+            keyPrefix: '005',
+            feedEnabled: false,
             retrieveable: true,
             custom: false,
             queryable: true,
@@ -155,6 +173,9 @@ describe('DependencyGraph', () => {
             const taskDescribe: SObjectDescribe = {
                 name: 'Task',
                 label: 'Task',
+                labelPlural: 'Tasks',
+                keyPrefix: '00T',
+                feedEnabled: false,
                 retrieveable: true,
                 custom: false,
                 queryable: true,
@@ -166,6 +187,7 @@ describe('DependencyGraph', () => {
                         updateable: true,
                         createable: true,
                         nillable: true,
+                        queryable: true,
                         relationshipName: 'What',
                         referenceTo: ['Account', 'Opportunity'],
                         custom: false
@@ -175,6 +197,9 @@ describe('DependencyGraph', () => {
             const opportunityDescribe: SObjectDescribe = {
                 name: 'Opportunity',
                 label: 'Opportunity',
+                labelPlural: 'Opportunities',
+                keyPrefix: '006',
+                feedEnabled: false,
                 retrieveable: true,
                 custom: false,
                 queryable: true,
@@ -196,6 +221,9 @@ describe('DependencyGraph', () => {
         const userDescribe: SObjectDescribe = {
             name: 'User',
             label: 'User',
+            labelPlural: 'Users',
+            keyPrefix: '005',
+            feedEnabled: false,
             retrieveable: true,
             custom: false,
             queryable: true,
@@ -204,6 +232,9 @@ describe('DependencyGraph', () => {
         const accountDescribe: SObjectDescribe = {
             name: 'Account',
             label: 'Account',
+            labelPlural: 'Accounts',
+            keyPrefix: '001',
+            feedEnabled: false,
             custom: false,
             retrieveable: true,
             queryable: true,
@@ -215,6 +246,7 @@ describe('DependencyGraph', () => {
                     updateable: true,
                     createable: true,
                     nillable: true,
+                    queryable: true,
                     relationshipName: 'Owner',
                     referenceTo: ['User'],
                     custom: false
@@ -224,8 +256,11 @@ describe('DependencyGraph', () => {
         const contactDescribe: SObjectDescribe = {
             name: 'Contact',
             label: 'Contact',
+            labelPlural: 'Contacts',
+            keyPrefix: '003',
+            feedEnabled: false,
             custom: false,
-                retrieveable: true,
+            retrieveable: true,
             queryable: true,
             fields: [
                 {
@@ -235,6 +270,7 @@ describe('DependencyGraph', () => {
                     updateable: true,
                     createable: true,
                     nillable: true,
+                    queryable: true,
                     relationshipName: 'Account',
                     referenceTo: ['Account'],
                     custom: false
@@ -246,6 +282,7 @@ describe('DependencyGraph', () => {
                     updateable: true,
                     createable: true,
                     nillable: true,
+                    queryable: true,
                     relationshipName: 'Owner',
                     referenceTo: ['User'],
                     custom: false
@@ -255,8 +292,11 @@ describe('DependencyGraph', () => {
         const opportunityDescribe: SObjectDescribe = {
             name: 'Opportunity',
             label: 'Opportunity',
+            labelPlural: 'Opportunities',
+            keyPrefix: '006',
+            feedEnabled: false,
             custom: false,
-                retrieveable: true,
+            retrieveable: true,
             queryable: true,
             fields: [
                 {
@@ -266,6 +306,7 @@ describe('DependencyGraph', () => {
                     updateable: true,
                     createable: true,
                     nillable: true,
+                    queryable: true,
                     relationshipName: 'Account',
                     referenceTo: ['Account'],
                     custom: false
@@ -302,6 +343,9 @@ describe('DependencyGraph', () => {
             const accountCycleDescribe: SObjectDescribe = {
                 name: 'Account',
                 label: 'Account',
+                labelPlural: 'Accounts',
+                keyPrefix: '001',
+                feedEnabled: false,
                 custom: false,
                 retrieveable: true,
                 queryable: true,
@@ -313,6 +357,7 @@ describe('DependencyGraph', () => {
                         updateable: true,
                         createable: true,
                         nillable: true,
+                        queryable: true,
                         relationshipName: 'Contact',
                         referenceTo: ['Contact'],
                         custom: true
@@ -335,6 +380,9 @@ describe('DependencyGraph', () => {
         const userDescribe: SObjectDescribe = {
             name: 'User',
             label: 'User',
+            labelPlural: 'Users',
+            keyPrefix: '005',
+            feedEnabled: false,
             custom: false,
             queryable: true,
             retrieveable: true, // Añadido para corregir el error de compilación
@@ -343,6 +391,9 @@ describe('DependencyGraph', () => {
         const accountDescribe: SObjectDescribe = {
             name: 'Account',
             label: 'Account',
+            labelPlural: 'Accounts',
+            keyPrefix: '001',
+            feedEnabled: false,
             custom: false,
             retrieveable: true,
             queryable: true,
@@ -354,6 +405,7 @@ describe('DependencyGraph', () => {
                     updateable: true,
                     createable: true,
                     nillable: false,
+                    queryable: true,
                     relationshipName: 'Owner',
                     referenceTo: ['User'],
                     custom: false
@@ -363,6 +415,9 @@ describe('DependencyGraph', () => {
         const contactDescribe: SObjectDescribe = {
             name: 'Contact',
             label: 'Contact',
+            labelPlural: 'Contacts',
+            keyPrefix: '003',
+            feedEnabled: false,
             custom: false,
             retrieveable: true,
             queryable: true,
@@ -374,6 +429,7 @@ describe('DependencyGraph', () => {
                     updateable: true,
                     createable: true,
                     nillable: true,
+                    queryable: true,
                     relationshipName: 'Account',
                     referenceTo: ['Account'],
                     custom: false
@@ -385,6 +441,7 @@ describe('DependencyGraph', () => {
                     updateable: true,
                     createable: true,
                     nillable: false,
+                    queryable: true,
                     relationshipName: 'Owner',
                     referenceTo: ['User'],
                     custom: false
@@ -394,6 +451,9 @@ describe('DependencyGraph', () => {
         const opportunityDescribe: SObjectDescribe = {
             name: 'Opportunity',
             label: 'Opportunity',
+            labelPlural: 'Opportunities',
+            keyPrefix: '006',
+            feedEnabled: false,
             custom: false,
             retrieveable: true,
             queryable: true,
@@ -405,6 +465,7 @@ describe('DependencyGraph', () => {
                     updateable: true,
                     createable: true,
                     nillable: false,
+                    queryable: true,
                     relationshipName: 'Account',
                     referenceTo: ['Account'],
                     custom: false
@@ -416,6 +477,7 @@ describe('DependencyGraph', () => {
                     updateable: true,
                     createable: true,
                     nillable: true,
+                    queryable: true,
                     relationshipName: 'PrimaryContact',
                     referenceTo: ['Contact'],
                     custom: true
@@ -440,6 +502,9 @@ describe('DependencyGraph', () => {
             const accountCycleDescribe: SObjectDescribe = {
                 name: 'Account',
                 label: 'Account',
+                labelPlural: 'Accounts',
+                keyPrefix: '001',
+                feedEnabled: false,
                 custom: false,
                 retrieveable: true,
                 queryable: true,
@@ -451,6 +516,7 @@ describe('DependencyGraph', () => {
                         updateable: true,
                         createable: true,
                         nillable: true,
+                        queryable: true,
                         relationshipName: 'Contact',
                         referenceTo: ['Contact'],
                         custom: true
@@ -495,6 +561,9 @@ describe('DependencyGraph', () => {
             const contactNoOptionalDescribe: SObjectDescribe = {
                 name: 'Contact',
                 label: 'Contact',
+                labelPlural: 'Contacts',
+                keyPrefix: '003',
+                feedEnabled: false,
                 custom: false,
                 retrieveable: true,
                 queryable: true,
@@ -506,6 +575,7 @@ describe('DependencyGraph', () => {
                         updateable: true,
                         createable: true,
                         nillable: false,
+                        queryable: true,
                         relationshipName: 'Account',
                         referenceTo: ['Account'],
                         custom: false
@@ -517,6 +587,7 @@ describe('DependencyGraph', () => {
                         updateable: true,
                         createable: true,
                         nillable: false,
+                        queryable: true,
                         relationshipName: 'Owner',
                         referenceTo: ['User'],
                         custom: false
@@ -526,6 +597,9 @@ describe('DependencyGraph', () => {
             const opportunityNoOptionalDescribe: SObjectDescribe = {
                 name: 'Opportunity',
                 label: 'Opportunity',
+                labelPlural: 'Opportunities',
+                keyPrefix: '006',
+                feedEnabled: false,
                 custom: false,
                 retrieveable: true,
                 queryable: true,
@@ -537,6 +611,7 @@ describe('DependencyGraph', () => {
                         updateable: true,
                         createable: true,
                         nillable: false,
+                        queryable: true,
                         relationshipName: 'Account',
                         referenceTo: ['Account'],
                         custom: false
@@ -548,6 +623,7 @@ describe('DependencyGraph', () => {
                         updateable: true,
                         createable: true,
                         nillable: false,
+                        queryable: true,
                         relationshipName: 'PrimaryContact',
                         referenceTo: ['Contact'],
                         custom: true

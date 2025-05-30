@@ -14,6 +14,26 @@ const logger = new Logger('BackupCommand');
 const auth = new Auth();
 const aliasManagerService = new AliasManagerService();
 
+// Placeholder para obtener todos los SObjects consultables
+async function getAllSObjectNames(conn: Connection, spinner: Ora): Promise<string[]> {
+  spinner.text = 'Obteniendo lista de todos los SObjects recuperables...';
+  logger.info('Obteniendo lista de todos los SObjects recuperables...');
+  try {
+    const describeGlobalResult = await conn.describeGlobal();
+    const sObjectNames = describeGlobalResult.sobjects
+      .filter(s => s.queryable && s.retrieveable) // Considerar solo los que se pueden consultar y recuperar
+      .map(s => s.name);
+    spinner.succeed(`Se encontraron ${sObjectNames.length} SObjects recuperables.`);
+    logger.info(`SObjects recuperables encontrados: ${sObjectNames.length}`);
+    return sObjectNames;
+  } catch (error) {
+    const errMsg = `Error al obtener la lista de SObjects globales: ${(error as Error).message}`;
+    spinner.fail(errMsg);
+    logger.error(errMsg);
+    throw error;
+  }
+}
+
 // Placeholder functions - these would need proper implementation
 async function generateAndSaveDependencyGraph(
   allSObjectDescribes: Map<string, SObjectDescribe>,
@@ -129,13 +149,24 @@ async function getFieldsToQuery(conn: Connection, sObjectName: string): Promise<
  * Parámetros para la función de backup de datos.
  */
 export interface BackupDataParams {
-  sourceOrg: string; // Alias o username de la organización de origen
-  query?: string; // SOQL query (mutuamente excluyente con objects)
-  objects?: string; // Lista de SObjects separados por coma (mutuamente excluyente con query)
-  tag?: string; // Etiqueta opcional para el directorio del backup
-  outputDir?: string; // Directorio base para los backups (default: ./backups)
-  noMetadata?: boolean; // Flag para no incluir metadatos
-  noDependencyGraph?: boolean; // Flag para no incluir grafo de dependencias
+  // Parámetros de la CLI de main.ts
+  sourceOrgIdentifier: string; // Nuevo nombre para el identificador de la org (username o alias)
+  outputDir: string; // Ruta del directorio de salida para el backup
+  manifestPath?: string; // Ruta al archivo backup-manifest.json (opcional)
+  includeMetadata?: boolean; // Incluir metadatos (descripciones de SObject y grafo de dependencia)
+  dataOnly?: boolean; // Extraer solo datos
+  metadataOnly?: boolean; // Extraer solo metadatos
+  apiVersion?: string; // Versión de la API de Salesforce a utilizar
+  maxFileSize?: string; // Tamaño máximo de archivo para los CSV de datos
+  excludeFields?: string[]; // Lista de campos a excluir
+  sObjectList?: string[]; // Lista de SObjects a incluir (de --sobjects)
+  allSObjects?: boolean; // Incluir todos los SObjects recuperables
+  nameFieldsOnly?: boolean; // Incluir solo campos de nombre para registros relacionados
+
+  // Parámetros de la interfaz original que podrían ser útiles internamente o necesitar adaptación
+  // query?: string; // Si se decide soportar query directa internamente en algún momento
+  // tag?: string; // Si se decide reintroducir para nombres de subdirectorios
+  // noMetadata y noDependencyGraph se gestionan ahora con includeMetadata, dataOnly, metadataOnly
 }
 
 /**
@@ -148,53 +179,70 @@ export async function backupData(params: BackupDataParams): Promise<string> {
 
   let backupFullPath: string | undefined; // Declarado aquí para acceso en catch
   let backupManifest: any = {
-    sourceOrgAlias: params.sourceOrg,
+    sourceOrgIdentifier: params.sourceOrgIdentifier,
     sourceOrgId: '', // Se llenará después de la conexión
     timestampUtc: commandStartTime.toISOString(),
-    tag: params.tag || '',
-    query: params.query || '',
-    objects: [], // Se llenará con los SObjects procesados
+    tag: '', // Tag ya no se pasa desde CLI, se puede omitir o dejar vacío
+    query: '', // Query general ya no se pasa desde CLI para control de flujo
+    sObjectList: [], // Se llenará con los SObjects procesados
     toolVersion: await getToolVersion(),
-    includedMetadata: !params.noMetadata,
-    includedDependencyGraph: !params.noDependencyGraph,
+    // La lógica de includeMetadata, dataOnly, metadataOnly se maneja en main.ts
+    // params.includeMetadata ya refleja la intención final
+    includedMetadata: params.includeMetadata || params.metadataOnly,
+    // El grafo de dependencias es un tipo de metadato
+    includedDependencyGraph: (params.includeMetadata || params.metadataOnly) && !params.dataOnly,
     status: 'PENDING',
     summary: '',
-    sObjectsData: {}, // Añadido para detalles por SObject
-    sObjectsMetadata: {}, // Añadido para detalles por SObject
+    sObjectsData: {},
+    sObjectsMetadata: {},
     errors: []
   };
+  // Ajustar based en dataOnly y metadataOnly
+  if (params.dataOnly) {
+    backupManifest.includedMetadata = false;
+    backupManifest.includedDependencyGraph = false;
+  }
+  if (params.metadataOnly) {
+    backupManifest.includedMetadata = true;
+    backupManifest.includedDependencyGraph = true;
+  }
+
 
   try {
-    const config = await loadConfig('./config.json'); // Cargar config.json por defecto
+    const config = await loadConfig('./config.json');
 
-    // Validación de parámetros
-    if (!params.sourceOrg) {
-      throw new Error("Debe especificar una organización de origen con -s o --source-org.");
+    if (!params.sourceOrgIdentifier) {
+      throw new Error("Debe especificar una organización de origen.");
     }
-    if (!params.query && !params.objects) {
-      throw new Error("Debe especificar una consulta con -q (--query) o una lista de objetos con --objects.");
-    }
-    if (params.query && params.objects) {
-      throw new Error("No puede especificar -q (--query) y --objects simultáneamente.");
+    if (!(params.sObjectList && params.sObjectList.length > 0) && !params.allSObjects) {
+      throw new Error("Debe especificar una lista de SObjects con --sobjects o usar --all-sobjects.");
     }
 
-    // Determinar directorio de backup
-    const baseOutputDir = params.outputDir || './backups';
-    const timestamp = commandStartTime.toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19); // YYYY-MM-DD_HH-MM-SS
-    const backupDirName = params.tag ? `${timestamp}_${params.tag}` : timestamp;
-    backupFullPath = path.resolve(baseOutputDir, backupDirName); // Asignar a la variable declarada antes
+    const baseOutputDir = params.outputDir; // outputDir es requerido por la CLI
+    const timestamp = commandStartTime.toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);
+    const backupDirName = timestamp; // Sin tag desde CLI
+    backupFullPath = path.resolve(baseOutputDir, backupDirName);
     
     spinner.text = `Creando snapshot en: ${backupFullPath}`;
     await ensureDir(backupFullPath);
-    await ensureDir(path.join(backupFullPath, 'data'));
-    if (!params.noMetadata) await ensureDir(path.join(backupFullPath, 'metadata'));
-    if (!params.noDependencyGraph) await ensureDir(path.join(backupFullPath, 'dependencies'));
+
+    // Crear subdirectorios condicionalmente
+    const shouldProcessData = !params.metadataOnly;
+    const shouldProcessMetadata = backupManifest.includedMetadata; // Usar el valor ya calculado para el manifest
+
+    if (shouldProcessData) {
+      await ensureDir(path.join(backupFullPath, 'data'));
+    }
+    if (shouldProcessMetadata) {
+      await ensureDir(path.join(backupFullPath, 'metadata'));
+      if (backupManifest.includedDependencyGraph) { // Solo crear si se va a generar
+         await ensureDir(path.join(backupFullPath, 'dependencies'));
+      }
+    }
     spinner.succeed(`Snapshot creado en: ${backupFullPath}`);
 
-    // Conexión a la organización
-    spinner.start(`Autenticando con la organización de origen: ${params.sourceOrg}...`);
-    const conn = await auth.getSalesforceConnection(params.sourceOrg, config);
-    // Intentar obtener OrgId (puede que no esté disponible en todas las conexiones jsforce directamente)
+    spinner.start(`Autenticando con la organización de origen: ${params.sourceOrgIdentifier}...`);
+    const conn = await auth.getSalesforceConnection(params.sourceOrgIdentifier, config);
     try {
         const orgDetails: any = await conn.query("SELECT Id FROM Organization LIMIT 1");
         if (orgDetails.records && orgDetails.records.length > 0) {
@@ -207,148 +255,111 @@ export async function backupData(params: BackupDataParams): Promise<string> {
     spinner.succeed(`Autenticado con ${conn.instanceUrl} (Org ID: ${backupManifest.sourceOrgId})`);
     
     let sObjectListToProcess: string[] = [];
-    if (params.objects) {
-      sObjectListToProcess = params.objects.split(',').map(s => s.trim()).filter(s => s);
-    } else if (params.query) {
-      const mainObject = extractSObjectNameFromSoql(params.query);
-      if (!mainObject) {
-        throw new Error("No se pudo determinar el objeto principal de la consulta SOQL. Verifique la sintaxis.");
-      }
-      sObjectListToProcess = [mainObject];
+    if (params.sObjectList && params.sObjectList.length > 0) {
+      sObjectListToProcess = params.sObjectList;
+    } else if (params.allSObjects) {
+      sObjectListToProcess = await getAllSObjectNames(conn, spinner);
     }
 
-    backupManifest.objects = sObjectListToProcess;
+    if (sObjectListToProcess.length === 0) {
+        throw new Error("No hay SObjects para procesar. Verifique las opciones --sobjects o --all-sobjects.");
+    }
+    backupManifest.sObjectList = sObjectListToProcess; // Actualizar manifest con la lista final
     logger.info(`SObjects a procesar: ${sObjectListToProcess.join(', ')}`);
 
     let totalRecordsExtractedMap: Record<string, number> = {};
-    let allSObjectDescribes: Map<string, SObjectDescribe> = new Map(); // Añadido para acumular descripciones
+    let allSObjectDescribes: Map<string, SObjectDescribe> = new Map();
 
     for (const sObjectName of sObjectListToProcess) {
       spinner.start(`Procesando SObject: ${sObjectName}`);
       totalRecordsExtractedMap[sObjectName] = 0;
 
       // 1. Extracción de Datos
-      try {
-        spinner.text = `[${sObjectName}] Extrayendo datos...`;
-        const { soqlFields, fieldMapForCsv } = await getFieldsToQuery(conn, sObjectName);
-        
-        let currentQuery = params.query;
-        if (params.objects) { // Si se usa --objects, construir SELECT * (o todos los campos consultables)
-            if (soqlFields.length === 0) {
-                logger.warn(`[${sObjectName}] No se encontraron campos consultables. Saltando extracción de datos.`);
-                continue;
-            }
-            currentQuery = `SELECT ${soqlFields.join(',')} FROM ${sObjectName}`;
-        } else if (params.query && sObjectName === extractSObjectNameFromSoql(params.query)) {
-            // Si es el query original, necesitamos re-escribirlo para incluir los campos de relación
-            // Esto es complejo si el query original ya tiene campos seleccionados.
-            // Por simplicidad, si es -q, asumimos que el usuario ya incluyó los campos deseados,
-            // o podríamos intentar parsear y añadir los campos de relación.
-            // Para esta versión, si es -q, usamos el query tal cual para datos, pero los campos de relación podrían no tener el formato __Name.
-            // El diseño dice: "Para los campos de tipo lookup y master-detail, además del Id del registro relacionado, se incluirá en una columna adicional el valor del campo de nombre principal"
-            // Esto implica que DEBEMOS modificar la query o el post-procesamiento.
-            // Modificaremos la query si es posible.
-            const originalQueryFields = params.query!.toLowerCase().match(/select (.*?) from/)?.[1].split(',').map(f => f.trim());
-            const fieldsToAdd = soqlFields.filter(sf => !originalQueryFields?.includes(sf.toLowerCase()) && !originalQueryFields?.includes(sf.split('.')[0].toLowerCase() + '.' + sf.split('.')[1]?.toLowerCase()));
-            
-            if (fieldsToAdd.length > 0) {
-                const fromClausePosition = params.query!.toLowerCase().indexOf(' from ');
-                if (fromClausePosition > -1) {
-                    currentQuery = params.query!.substring(0, fromClausePosition) + `, ${fieldsToAdd.join(',')}` + params.query!.substring(fromClausePosition);
-                    logger.info(`[${sObjectName}] Query modificado para incluir campos de relación: ${fieldsToAdd.join(',')}`);
-                }
-            }
-        }
-        
-        if (!currentQuery) {
-            logger.warn(`[${sObjectName}] No se pudo determinar la consulta SOQL. Saltando extracción de datos.`);
-            continue;
-        }
+      if (shouldProcessData) {
+        try {
+          spinner.text = `[${sObjectName}] Extrayendo datos...`;
+          const { soqlFields, fieldMapForCsv } = await getFieldsToQuery(conn, sObjectName);
+          
+          if (soqlFields.length === 0) {
+              logger.warn(`[${sObjectName}] No se encontraron campos consultables. Saltando extracción de datos.`);
+              backupManifest.sObjectsData[sObjectName] = {
+                file: path.join('data', `${sObjectName}.csv`),
+                recordsExtracted: 0,
+                status: 'SkippedNoFields'
+              };
+              continue;
+          }
+          const currentQuery = `SELECT ${soqlFields.join(',')} FROM ${sObjectName}`;
+          logger.debug(`[${sObjectName}] Query para extracción: ${currentQuery}`);
+          
+          const csvFilePath = path.join(backupFullPath, 'data', `${sObjectName}.csv`);
+          const queryResult = await conn.query<any>(currentQuery).autoFetch(true).maxFetch(500000).run(); // Añadido maxFetch
 
-        const csvFilePath = path.join(backupFullPath, 'data', `${sObjectName}.csv`);
-        
-        // Usar Bulk API si es apropiado (lógica similar a extractCommand)
-        // Por ahora, simplificamos y usamos extractDataQuery, que puede manejar Tooling/REST.
-        // extractDataQuery en extractCommand.ts guarda en outputPath (que puede ser dir o file)
-        // Aquí necesitamos que siempre sea un archivo específico.
-        // La función extractDataQuery original podría necesitar refactorización para ser más reutilizable aquí.
-        // Por ahora, asumimos que podemos pasarle el path completo del archivo CSV.
-        
-        // Simulación de conteo de registros y escritura
-        // En una implementación real, se usaría extractDataQuery/Bulk y se manejaría el stream.
-        const queryResult = await conn.query<any>(currentQuery).autoFetch(true).run(); // Corregido autoFetch y añadido .run()
-                                                          // autoFetch(true) carga todo en memoria, ¡cuidado con grandes volúmenes!
-                                                          // Se debería usar conn.bulk.query() o conn.query().stream() para grandes volúmenes.
+          const transformedRecords = queryResult.records.map((record: any) => {
+              const newRecord: any = { ...record };
+              for (const soqlField in fieldMapForCsv) {
+                  const csvColumn = fieldMapForCsv[soqlField];
+                  const parts = soqlField.split('.');
+                  let value = record;
+                  for (const part of parts) {
+                      if (value && typeof value === 'object' && part in value) {
+                          value = (value as any)[part];
+                      } else {
+                          value = undefined;
+                          break;
+                      }
+                  }
+                  if (value !== undefined) {
+                      newRecord[csvColumn] = value;
+                  }
+                  if (parts.length > 1 && newRecord[parts[0]] !== undefined) delete newRecord[parts[0]];
+              }
+              delete newRecord.attributes;
+              return newRecord;
+          });
 
-        // Transformar records para mapear nombres de columna para CSV
-        const transformedRecords = queryResult.records.map((record: any) => { // Añadido tipo explícito a record
-            const newRecord: any = { ...record };
-            for (const soqlField in fieldMapForCsv) {
-                const csvColumn = fieldMapForCsv[soqlField];
-                // El campo en el record puede ser anidado, ej: record.Account.Name
-                const parts = soqlField.split('.');
-                let value = record;
-                for (const part of parts) {
-                    if (value && typeof value === 'object' && part in value) {
-                        value = (value as any)[part];
-                    } else {
-                        value = undefined;
-                        break;
-                    }
-                }
-                if (value !== undefined) {
-                    newRecord[csvColumn] = value;
-                }
-                // Eliminar el campo original anidado si es necesario, o dejarlo.
-                // Por ahora, lo dejamos, writeRecordsToCsv debería tomar las claves de newRecord.
-                if (parts.length > 1) delete newRecord[parts[0]]; // Elimina el objeto Account si teníamos Account.Name
-            }
-            // Eliminar atributos que no son datos (como el atributo 'attributes')
-            delete newRecord.attributes;
-            return newRecord;
-        });
-
-
-        if (transformedRecords.length > 0) {
-            await writeRecordsToCsv(transformedRecords, csvFilePath);
-            totalRecordsExtractedMap[sObjectName] = transformedRecords.length;
-            spinner.succeed(`[${sObjectName}] ${transformedRecords.length} registros guardados en data/${sObjectName}.csv`);
+          if (transformedRecords.length > 0) {
+              await writeRecordsToCsv(transformedRecords, csvFilePath);
+              totalRecordsExtractedMap[sObjectName] = transformedRecords.length;
+              spinner.succeed(`[${sObjectName}] ${transformedRecords.length} registros guardados en data/${sObjectName}.csv`);
+            backupManifest.sObjectsData[sObjectName] = {
+              file: path.join('data', `${sObjectName}.csv`),
+              recordsExtracted: transformedRecords.length,
+              status: 'Extracted'
+            };
+          } else {
+              spinner.warn(`[${sObjectName}] No se encontraron registros. Archivo data/${sObjectName}.csv no creado o vacío.`);
+                    backupManifest.sObjectsData[sObjectName] = {
+                      file: path.join('data', `${sObjectName}.csv`),
+                      recordsExtracted: 0,
+                      status: 'NoData'
+                    };
+          }
+        } catch (error) {
+          const errMsg = `[${sObjectName}] Error durante la extracción de datos: ${(error as Error).message}`;
+          logger.error(errMsg);
+          backupManifest.errors.push({ type: 'DataExtractionError', object: sObjectName, message: errMsg });
           backupManifest.sObjectsData[sObjectName] = {
-            file: path.join('data', `${sObjectName}.csv`),
-            recordsExtracted: transformedRecords.length,
-            status: 'Extracted'
+              file: path.join('data', `${sObjectName}.csv`),
+              recordsExtracted: 0,
+              status: 'Error',
+              errorDetails: errMsg
           };
-        } else {
-            spinner.warn(`[${sObjectName}] No se encontraron registros. Archivo data/${sObjectName}.csv no creado o vacío.`);
-                  backupManifest.sObjectsData[sObjectName] = {
-                    file: path.join('data', `${sObjectName}.csv`),
-                    recordsExtracted: 0,
-                    status: 'NoData'
-                  };
-        } // Cierra el bloque try para la extracción de datos
-
-      } catch (error) {
-        const errMsg = `[${sObjectName}] Error durante la extracción de datos: ${(error as Error).message}`;
-        logger.error(errMsg);
-        backupManifest.errors.push(errMsg); // Error global
-        backupManifest.sObjectsData[sObjectName] = { // Estado específico del SObject
-            file: path.join('data', `${sObjectName}.csv`), // Ruta intentada
-            recordsExtracted: 0,
-            status: 'Error',
-            errorDetails: errMsg // Opcional: añadir detalles del error aquí también
-        };
-        spinner.fail(errMsg);
+          spinner.fail(errMsg);
+        }
+      } else {
+        logger.info(`[${sObjectName}] Extracción de datos omitida debido a --metadata-only.`);
+        backupManifest.sObjectsData[sObjectName] = { status: 'SkippedMetadataOnly' };
       }
 
-      // 2. Extracción de Metadatos
-      if (!params.noMetadata) {
+      // 2. Extracción de Metadatos (SObject Describe)
+      if (shouldProcessMetadata) {
         try {
-          spinner.text = `[${sObjectName}] Extrayendo metadatos...`;
+          spinner.text = `[${sObjectName}] Extrayendo metadatos (describe)...`;
           const describeResult = await describeSObject(conn, sObjectName);
-          allSObjectDescribes.set(sObjectName, describeResult); // Poblar el Map
+          allSObjectDescribes.set(sObjectName, describeResult);
           
-          // Transformar describeResult al formato especificado en backup_command_design.md
-          const metadataOutput: any = {
+          const metadataOutput: any = { /* ... (igual que antes) ... */
             name: describeResult.name,
             label: describeResult.label,
             labelPlural: describeResult.labelPlural,
@@ -356,53 +367,24 @@ export async function backupData(params: BackupDataParams): Promise<string> {
             custom: describeResult.custom,
             feedEnabled: describeResult.feedEnabled,
             fields: describeResult.fields.map((f: SObjectField) => ({
-              name: f.name,
-              label: f.label,
-              type: f.type,
-              length: f.length,
-              precision: f.precision,
-              scale: f.scale,
-              digits: f.digits,
-              nillable: f.nillable,
-              custom: f.custom,
-              unique: f.unique,
-              externalId: f.externalId,
-              autoNumber: f.autoNumber,
-              calculated: f.calculated,
-              formula: f.calculatedFormula, // Asegurarse que el nombre del campo es correcto
-              formulaTreatNullNumberAsZero: f.formulaTreatNullNumberAsZero,
-              defaultValue: f.defaultValueFormula, // o f.defaultValue
-              picklistValues: f.picklistValues?.map((pv: any) => ({ // Añadido tipo explícito a pv
-                value: pv.value,
-                label: pv.label,
-                active: pv.active,
-                defaultValue: pv.defaultValue,
-              })),
-              referenceTo: f.referenceTo,
-              relationshipName: f.relationshipName,
-              cascadeDelete: f.cascadeDelete,
-              restrictedDelete: f.restrictedDelete,
-              writeRequiresMasterRead: f.writeRequiresMasterRead
+              name: f.name, label: f.label, type: f.type, length: f.length, precision: f.precision,
+              scale: f.scale, digits: f.digits, nillable: f.nillable, custom: f.custom, unique: f.unique,
+              externalId: f.externalId, autoNumber: f.autoNumber, calculated: f.calculated,
+              formula: f.calculatedFormula, formulaTreatNullNumberAsZero: f.formulaTreatNullNumberAsZero,
+              defaultValue: f.defaultValueFormula,
+              picklistValues: f.picklistValues?.map((pv: any) => ({ value: pv.value, label: pv.label, active: pv.active, defaultValue: pv.defaultValue })),
+              referenceTo: f.referenceTo, relationshipName: f.relationshipName, cascadeDelete: f.cascadeDelete,
+              restrictedDelete: f.restrictedDelete, writeRequiresMasterRead: f.writeRequiresMasterRead
             })),
             childRelationships: describeResult.childRelationships?.map(cr => ({
-                childSObject: cr.childSObject,
-                deprecatedAndHidden: cr.deprecatedAndHidden,
-                field: cr.field,
-                junctionIdListNames: cr.junctionIdListNames,
-                junctionReferenceTo: cr.junctionReferenceTo,
-                relationshipName: cr.relationshipName,
-                cascadeDelete: cr.cascadeDelete,
-                restrictedDelete: cr.restrictedDelete,
-            })), // Opcional, según diseño
-            recordTypeInfos: describeResult.recordTypeInfos?.map((rti: any) => ({ // Añadido tipo explícito a rti
-                name: rti.name,
-                developerName: rti.developerName,
-                recordTypeId: rti.recordTypeId,
-                active: rti.active,
-                available: rti.available,
-                defaultRecordTypeMapping: rti.defaultRecordTypeMapping,
-                master: rti.master,
-            })), // Opcional, según diseño
+                childSObject: cr.childSObject, deprecatedAndHidden: cr.deprecatedAndHidden, field: cr.field,
+                junctionIdListNames: cr.junctionIdListNames, junctionReferenceTo: cr.junctionReferenceTo,
+                relationshipName: cr.relationshipName, cascadeDelete: cr.cascadeDelete, restrictedDelete: cr.restrictedDelete,
+            })),
+            recordTypeInfos: describeResult.recordTypeInfos?.map((rti: any) => ({
+                name: rti.name, developerName: rti.developerName, recordTypeId: rti.recordTypeId, active: rti.active,
+                available: rti.available, defaultRecordTypeMapping: rti.defaultRecordTypeMapping, master: rti.master,
+            })),
           };
 
           const metadataFilePath = path.join(backupFullPath, 'metadata', `${sObjectName}.json`);
@@ -410,35 +392,33 @@ export async function backupData(params: BackupDataParams): Promise<string> {
           spinner.succeed(`[${sObjectName}] Metadatos guardados en metadata/${sObjectName}.json`);
           backupManifest.sObjectsMetadata[sObjectName] = {
             file: path.join('metadata', `${sObjectName}.json`),
-            fields: describeResult.fields.length, // Asumiendo que describeResult está disponible
+            fields: describeResult.fields.length,
             status: 'Saved'
           };
         } catch (error) {
           const errMsg = `[${sObjectName}] Error durante la extracción de metadatos: ${(error as Error).message}`;
           logger.error(errMsg);
-          backupManifest.errors.push(errMsg); // Error global
-          backupManifest.sObjectsMetadata[sObjectName] = { // Estado específico del SObject
-            file: path.join('metadata', `${sObjectName}.json`), // Ruta intentada
-            fields: 0, // O el recuento de campos si describeResult se obtuvo parcialmente
+          backupManifest.errors.push({ type: 'MetadataExtractionError', object: sObjectName, message: errMsg });
+          backupManifest.sObjectsMetadata[sObjectName] = {
+            file: path.join('metadata', `${sObjectName}.json`),
+            fields: 0,
             status: 'Error',
-            errorDetails: errMsg // Opcional
+            errorDetails: errMsg
           };
           spinner.fail(errMsg);
         }
+      } else {
+         logger.info(`[${sObjectName}] Extracción de metadatos (describe) omitida.`);
+         backupManifest.sObjectsMetadata[sObjectName] = { status: 'SkippedNoMetadata' };
       }
     }
 
     // 3. Generación del Grafo de Dependencias
-    if (!params.noDependencyGraph) {
+    if (backupManifest.includedDependencyGraph && allSObjectDescribes.size > 0) {
       try {
-        spinner.start('Generando grafo de dependencias...');
-        // La llamada a generateAndSaveDependencyGraph se movió más abajo, después de recolectar todos los SObjectDescribes.
-        // Esta sección ahora se enfoca en la integración de la llamada real.
-        // El spinner.start ya no es necesario aquí si se maneja dentro de la función.
-        // El spinner.succeed() o .fail() se maneja dentro de generateAndSaveDependencyGraph.
-        // El bloque try-catch aquí es para manejar errores de la llamada y actualizar el manifest.
+        // spinner.start() es llamado dentro de generateAndSaveDependencyGraph
         await generateAndSaveDependencyGraph(allSObjectDescribes, backupFullPath, spinner);
-        backupManifest.includedDependencyGraph = true; // Marcar como incluido si no hay error
+        // backupManifest.includedDependencyGraph ya está seteado correctamente.
         backupManifest.dependencyGraphFile = path.join('dependencies', 'dependency-graph.json');
       } catch (graphError) {
         const errMsg = `Fallo al generar o guardar el grafo de dependencias: ${(graphError instanceof Error ? graphError.message : String(graphError))}`;
@@ -447,65 +427,100 @@ export async function backupData(params: BackupDataParams): Promise<string> {
           type: 'DependencyGraphError',
           message: errMsg
         });
-        backupManifest.includedDependencyGraph = false;
-        // spinner.fail() ya es llamado dentro de generateAndSaveDependencyGraph si hay error allí.
-        // Si el error es por otra causa antes de llamar a la función (aunque no debería ser el caso aquí),
-        // se podría añadir un spinner.fail(errMsg) aquí.
+        backupManifest.includedDependencyGraph = false; // Actualizar si falla específicamente aquí
       }
-    } else {
-      spinner.info('Generación de grafo de dependencias omitida por parámetro --no-dependency-graph.');
-      logger.info('Generación de grafo de dependencias omitida por parámetro --no-dependency-graph.');
-      backupManifest.includedDependencyGraph = false;
+    } else if (shouldProcessMetadata && !backupManifest.includedDependencyGraph) {
+        logger.info('Generación de grafo de dependencias omitida (ej. por --data-only o no se procesaron metadatos).');
+        backupManifest.includedDependencyGraph = false; // Confirmar
+    } else if (!shouldProcessMetadata) {
+        logger.info('Generación de grafo de dependencias omitida porque los metadatos no fueron procesados.');
+        backupManifest.includedDependencyGraph = false; // Confirmar
     }
     
     // 4. Creación del backup-manifest.json
     spinner.start('Creando manifiesto del backup...');
+    // Determinar el manifestPath final
+    const finalManifestPath = params.manifestPath ? path.resolve(params.manifestPath) : path.join(backupFullPath, 'backup-manifest.json');
+    // Si params.manifestPath es un directorio, adjuntar 'backup-manifest.json'
+    // Esta lógica debería estar en main.ts o ser más robusta aquí. Por ahora, asume que es un path de archivo o se usa el default.
+    // Para simplificar, si params.manifestPath existe, lo usamos, sino el default.
+    // La CLI ya define outputDir como directorio de backup, y manifest como path opcional.
+    // Si manifestPath es provisto, se usa ese. Sino, dentro de outputDir.
+    // La lógica actual de backupFullPath ya crea el directorio del snapshot.
+    // Si params.manifestPath es provisto, ¿debería ir DENTRO de backupFullPath o es una ruta absoluta/relativa independiente?
+    // El diseño de CLI: .option('-m, --manifest <path>', 'Ruta al archivo backup-manifest.json (opcional, para especificar uno existente o ubicación no estándar)')
+    // Esto sugiere que puede ser una ubicación no estándar.
+    // Si es así, backupFullPath no debería usarse para el manifest si params.manifestPath está presente.
+    // Sin embargo, el resto de los archivos (data, metadata) SÍ van a backupFullPath.
+    // Esto podría ser confuso. Por ahora, si params.manifestPath se da, se usa. Si no, se pone en backupFullPath.
+
+    const manifestFileToWrite = params.manifestPath
+        ? path.resolve(params.manifestPath)
+        : path.join(backupFullPath, 'backup-manifest.json');
+
+    // Asegurar que el directorio para un manifestPath personalizado exista
+    if (params.manifestPath) {
+        await ensureDir(path.dirname(manifestFileToWrite));
+    }
     backupManifest.status = backupManifest.errors.length > 0 ? 'PARTIAL' : 'COMPLETED';
     let summaryParts: string[] = [];
-    for(const sObjectName in totalRecordsExtractedMap) {
+    sObjectListToProcess.forEach(sObjectName => {
+      if (totalRecordsExtractedMap[sObjectName] !== undefined) {
         summaryParts.push(`${totalRecordsExtractedMap[sObjectName]} registros de ${sObjectName}`);
-    }
-    backupManifest.summary = `Backup ${backupManifest.status}. ${summaryParts.join(', ')}.`;
+      } else if (backupManifest.sObjectsData[sObjectName]?.status === 'SkippedMetadataOnly') {
+        summaryParts.push(`${sObjectName} (solo metadatos)`);
+      } else if (backupManifest.sObjectsData[sObjectName]?.status === 'SkippedNoFields') {
+        summaryParts.push(`${sObjectName} (sin campos consultables)`);
+      }
+    });
+    
+    backupManifest.summary = `Backup ${backupManifest.status}. ${summaryParts.join('; ')}.`;
     if (backupManifest.errors.length > 0) {
-        backupManifest.summary += ` Errores: ${backupManifest.errors.length}.`;
+        backupManifest.summary += ` Errores encontrados: ${backupManifest.errors.length}.`;
     }
 
-    const manifestFilePath = path.join(backupFullPath, 'backup-manifest.json');
-    await fs.writeFile(manifestFilePath, JSON.stringify(backupManifest, null, 2));
-    spinner.succeed('Manifiesto del backup guardado.');
+    await fs.writeFile(manifestFileToWrite, JSON.stringify(backupManifest, null, 2));
+    spinner.succeed(`Manifiesto del backup guardado en: ${manifestFileToWrite}`);
 
     logger.info(`> ✓ Backup ${backupManifest.status}. Snapshot disponible en: ${backupFullPath}`);
-    logger.info(`> info: Total objetos procesados: ${sObjectListToProcess.length}. ${summaryParts.join('. ')}.`);
-    logger.info(`> info: Metadatos: ${backupManifest.includedMetadata ? 'Sí' : 'No'}. Grafo de dependencias: ${backupManifest.includedDependencyGraph ? 'Sí' : 'No'}.`);
+    logger.info(`> info: Total objetos procesados: ${sObjectListToProcess.length}. Detalles: ${summaryParts.join('; ')}.`);
+    logger.info(`> info: Metadatos incluidos: ${backupManifest.includedMetadata ? 'Sí' : 'No'}. Grafo de dependencias incluido: ${backupManifest.includedDependencyGraph ? 'Sí' : 'No'}.`);
 
     if (backupManifest.status !== 'COMPLETED') {
-        logger.warn(`El backup se completó con estado: ${backupManifest.status}. Revise los logs y el archivo backup-manifest.json para más detalles.`);
+        logger.warn(`El backup NO se completó satisfactoriamente (estado: ${backupManifest.status}). Revise los logs y el archivo manifiesto para más detalles.`);
     }
     
-    return backupFullPath;
-  } // Cierra el bloque try principal
-
-catch (error) {
-    const finalErrorMessage = `El backup ha fallado: ${(error as Error).message}`;
+    return backupFullPath; // Devuelve la ruta del directorio del snapshot (datos, metadata, etc.)
+  } catch (error) {
+    const finalErrorMessage = `El backup ha fallado críticamente: ${(error as Error).message}`;
     spinner.fail(finalErrorMessage);
     logger.error(finalErrorMessage);
+    logger.error("Stack trace:", (error as Error).stack); // Log stack trace for critical failures
     backupManifest.status = 'FAILED';
     backupManifest.summary = finalErrorMessage;
-    backupManifest.errors.push(finalErrorMessage);
-    
-    // Intentar escribir un manifiesto de error si es posible
-    if (backupFullPath && typeof backupFullPath === 'string') { // Asegurar que backupFullPath está definido
-        try {
-            const manifestFilePath = path.join(backupFullPath, 'backup-manifest.json');
-            await fs.writeFile(manifestFilePath, JSON.stringify(backupManifest, null, 2));
-            logger.info(`Manifiesto de error del backup guardado en ${manifestFilePath}`);
-        } catch (manifestError) {
-            logger.error(`No se pudo guardar el manifiesto de error: ${(manifestError as Error).message}`);
-        }
+    // Asegurar que errors sea un array de objetos o strings consistentes
+    if (typeof finalErrorMessage === 'string') {
+        backupManifest.errors.push({ type: 'CriticalError', message: finalErrorMessage });
     }
-    throw error; // Relanzar para que el llamador (CLI handler) lo capture
+
+
+    const manifestFileOnError = params.manifestPath
+        ? path.resolve(params.manifestPath)
+        : (backupFullPath ? path.join(backupFullPath, 'backup-manifest.json') : './backup-manifest-error.json');
+    
+    try {
+        if (params.manifestPath || backupFullPath) { // Solo intentar escribir si tenemos una ruta base
+            if (params.manifestPath) await ensureDir(path.dirname(manifestFileOnError));
+            else if (backupFullPath) await ensureDir(backupFullPath); // Asegurar que el directorio del snapshot exista
+        }
+        await fs.writeFile(manifestFileOnError, JSON.stringify(backupManifest, null, 2));
+        logger.info(`Manifiesto de error del backup guardado en ${manifestFileOnError}`);
+    } catch (manifestError) {
+        logger.error(`No se pudo guardar el manifiesto de error en ${manifestFileOnError}: ${(manifestError as Error).message}`);
+    }
+    throw error;
   }
-} // Cierre de la función backupData
+}
 
 // Aquí iría la lógica para registrar este comando con yargs o el manejador CLI del proyecto.
 // Ejemplo (conceptual):

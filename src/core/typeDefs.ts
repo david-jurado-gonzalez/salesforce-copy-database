@@ -93,7 +93,7 @@ export interface SObjectDescribe {
   name: string;
   label: string;
   labelPlural: string; // Añadido
-  keyPrefix: string | null; // Añadido
+  keyPrefix: string | null | undefined; // Modificado para compatibilidad con jsforce
   custom: boolean;
   feedEnabled: boolean; // Añadido
   queryable: boolean;

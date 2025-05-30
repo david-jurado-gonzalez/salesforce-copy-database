@@ -28,6 +28,9 @@ describe('SFDC API Functions', () => {
             const mockDescribe: SObjectDescribe = {
                 name: 'Account',
                 label: 'Account',
+                labelPlural: 'Accounts', // Añadido
+                keyPrefix: '001', // Añadido
+                feedEnabled: false, // Añadido
                 custom: false,
                 queryable: true, // Añadido
                 retrieveable: true,
@@ -39,6 +42,7 @@ describe('SFDC API Functions', () => {
                     updateable: true,
                     createable: true,
                     nillable: false,
+                    queryable: true, // Añadido
                     relationshipName: null,
                     referenceTo: null
                 }]
