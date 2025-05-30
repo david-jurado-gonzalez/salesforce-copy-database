@@ -100,16 +100,23 @@ program
 program
   .command('extract')
   .description('Extrae datos de una organización de origen usando una consulta SOQL.')
-  .requiredOption('-s, --source <alias>', 'Alias de la organización de origen (de SFDX o config)')
+  .option('-u, --username <username>', 'Nombre de usuario o alias de la organización de origen (reemplaza a -s)') // -s ahora es -u
+  .option('-a, --target-alias <alias>', 'Alias específico de la organización de origen (tiene precedencia sobre -u si ambos se proporcionan)')
   .requiredOption('-q, --query <soql>', 'La consulta SOQL para extraer los datos')
-  .option('-o, --output <path>', 'Ruta del directorio de salida para los datos', './data') // Cambiado a --output
+  .option('-o, --output <path>', 'Ruta del directorio de salida para los datos', './data')
   .option('--apiType <type>', 'Tipo de API a usar (auto, bulk, rest)', 'auto')
   .action(async (options) => {
+    // Validar que al menos uno de username o targetAlias se proporcione
+    if (!options.username && !options.targetAlias) {
+      logger.error('Error: Debe proporcionar un alias de origen con -a (--target-alias) o un nombre de usuario/alias con -u (--username).');
+      process.exit(1);
+    }
     try {
       await extractData({
-        sourceOrgAlias: options.source,
+        username: options.username, // options.source ahora es options.username
+        targetAlias: options.targetAlias,
         query: options.query,
-        outputPath: options.output, // Usar options.output
+        outputPath: options.output,
         apiType: options.apiType
       });
     } catch (error: any) {

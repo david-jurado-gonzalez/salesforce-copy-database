@@ -9,6 +9,8 @@
 export interface SessionState {
     sourceOrgAlias: string | undefined;
     targetOrgAlias: string | undefined;
+    selectedOrgAlias?: string; // Organización activa para la sesión interactiva
+    availableOrgAliases?: string[]; // Caché de alias de organización disponibles
     lastQuery: string | undefined;
     lastExtractionPath: string | undefined;
     lastSoslQuery: string | undefined; // Nueva propiedad para la última consulta SOSL
@@ -26,6 +28,8 @@ export class SessionManager {
         this.state = {
             sourceOrgAlias: undefined,
             targetOrgAlias: undefined,
+            selectedOrgAlias: undefined,
+            availableOrgAliases: undefined,
             lastQuery: undefined,
             lastExtractionPath: undefined,
             lastSoslQuery: undefined, // Inicializar nueva propiedad
@@ -67,6 +71,8 @@ export class SessionManager {
         this.state = {
             sourceOrgAlias: undefined,
             targetOrgAlias: undefined,
+            selectedOrgAlias: undefined,
+            availableOrgAliases: undefined,
             lastQuery: undefined,
             lastExtractionPath: undefined,
             lastSoslQuery: undefined, // Reiniciar nueva propiedad

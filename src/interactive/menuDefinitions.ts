@@ -12,7 +12,8 @@ import {
     handleManageQueries,
     handleSuggestBackupQuery,
     handleSelectOrg,
-    handleExecuteSOSLQuery, // Añadir importación para el nuevo manejador
+    handleExecuteSOSLQuery,
+    handleManageOrgAliases // Importar el manejador de alias
 } from './actionHandlers.js';
 import { Logger } from '../core/logger.js';
 import { AppConfig } from '../core/typeDefs.js'; // Importar AppConfig
@@ -31,6 +32,7 @@ export enum MainMenuChoices {
     SuggestBackupQuery = 'Sugerir Query de Backup',
     ListObjects = 'Listar Objetos',
     ExecuteSOSLQuery = 'Ejecutar Consulta SOSL', // Nueva opción de menú
+    ManageOrgAliases = 'Gestionar Alias de Organización', // Nueva opción para gestionar alias
     Exit = 'Salir',
 }
 
@@ -51,6 +53,35 @@ export async function promptMainMenu(): Promise<MainMenuChoices> {
 }
 
 /**
+ * Define las opciones del menú de gestión de alias de organización.
+ */
+export enum ManageOrgAliasesMenuChoices {
+    ListAliases = 'Listar alias de organización',
+    SelectActiveAlias = 'Seleccionar alias activo para la sesión',
+    AddOrAuthenticateAlias = 'Añadir/Autenticar nueva organización (login web)',
+    RemoveOrLogoutAlias = 'Eliminar alias/Cerrar sesión de organización',
+    SetProjectDefaultAlias = 'Establecer alias como predeterminado para el proyecto',
+    UnsetProjectDefaultAlias = 'Quitar alias predeterminado del proyecto',
+    BackToMainMenu = 'Volver al menú principal',
+}
+
+/**
+ * Muestra el menú de gestión de alias y maneja la selección del usuario.
+ * @returns La opción seleccionada por el usuario.
+ */
+export async function promptManageOrgAliasesMenu(): Promise<ManageOrgAliasesMenuChoices> {
+    const answers = await inquirer.prompt([
+        {
+            type: 'list',
+            name: 'manageOrgAliasesChoice',
+            message: 'Gestionar Alias de Organización:',
+            choices: Object.values(ManageOrgAliasesMenuChoices),
+        },
+    ]);
+    return answers.manageOrgAliasesChoice as ManageOrgAliasesMenuChoices;
+}
+
+/**
  * Inicia el bucle principal del modo interactivo.
  * @param appConfig La configuración de la aplicación.
  */
@@ -66,29 +97,32 @@ export async function startInteractiveMode(appConfig: AppConfig): Promise<void> 
 
         try {
             switch (choice) {
-                case MainMenuChoices.SelectSourceOrg:
-                    await handleSelectOrg('source', appConfig); // Pasar appConfig
+                case MainMenuChoices.SelectSourceOrg: // Considerar si esto se reemplaza/integra con ManageOrgAliases
+                    await handleSelectOrg('source', appConfig);
                     break;
-                case MainMenuChoices.SelectTargetOrg:
-                    await handleSelectOrg('target', appConfig); // Pasar appConfig
+                case MainMenuChoices.SelectTargetOrg: // Considerar si esto se reemplaza/integra con ManageOrgAliases
+                    await handleSelectOrg('target', appConfig);
+                    break;
+                case MainMenuChoices.ManageOrgAliases:
+                    await handleManageOrgAliases(currentState, appConfig);
                     break;
                 case MainMenuChoices.ExtractData:
-                    await handleExtractData(currentState, appConfig); // Pasar appConfig
+                    await handleExtractData(currentState, appConfig);
                     break;
                 case MainMenuChoices.DeployData:
-                    await handleDeployData(currentState, appConfig); // Pasar appConfig
+                    await handleDeployData(currentState, appConfig);
                     break;
                 case MainMenuChoices.ManageQueries:
-                    await handleManageQueries(currentState, appConfig); // Pasar appConfig
+                    await handleManageQueries(currentState, appConfig);
                     break;
                 case MainMenuChoices.SuggestBackupQuery:
-                    await handleSuggestBackupQuery(currentState, appConfig); // Pasar appConfig
+                    await handleSuggestBackupQuery(currentState, appConfig);
                     break;
                 case MainMenuChoices.ListObjects:
-                    await handleListObjects(currentState, appConfig); // Pasar appConfig
+                    await handleListObjects(currentState, appConfig);
                     break;
-                case MainMenuChoices.ExecuteSOSLQuery: // Nuevo case para SOSL
-                    await handleExecuteSOSLQuery(currentState, appConfig); // Llamar al nuevo manejador
+                case MainMenuChoices.ExecuteSOSLQuery:
+                    await handleExecuteSOSLQuery(currentState, appConfig);
                     break;
                 case MainMenuChoices.Exit:
                     logger.info('Saliendo del modo interactivo. ¡Hasta pronto!');
@@ -100,7 +134,6 @@ export async function startInteractiveMode(appConfig: AppConfig): Promise<void> 
             }
         } catch (error: any) {
             logger.error(`Error en la operación: ${error.message}`);
-            // Opcional: Preguntar al usuario si desea volver al menú principal o salir
             const { retry } = await inquirer.prompt([
                 {
                     type: 'confirm',

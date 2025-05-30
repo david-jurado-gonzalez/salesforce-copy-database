@@ -3,15 +3,17 @@
 import { Auth } from '../core/auth.js'; // Importar la clase Auth
 import { loadConfig, getOrgDataDir, ensureDir } from '../core/fileManager.js';
 import { Logger } from '../core/logger.js'; // Importar la clase Logger
-import { CommandOptions, DEFAULT_ORG_CONFIG } from '../core/typeDefs.js';
+import { CommandOptions, DEFAULT_ORG_CONFIG, OrgAliasInfo } from '../core/typeDefs.js';
 import { extractDataBulk, extractDataQuery, executeSoslQuery } from '../core/sfdc-api.js'; // Importar executeSoslQuery
 import { writeRecordsToCsv } from '../core/fileManager.js'; // Importar writeRecordsToCsv
+import { AliasManagerService } from '../core/aliasManagerService.js';
 import ora from 'ora';
 import path from 'path';
 import { createWriteStream } from 'fs';
 
 const logger = new Logger('ExtractCommand');
 const auth = new Auth();
+const aliasManagerService = new AliasManagerService();
 
 // Función para detectar subconsultas en una cadena SOQL
 function hasSubquery(soql: string): boolean {
@@ -64,7 +66,8 @@ function extractMainSObjectNameFromQuery(soqlQuery: string): string | null {
  * Parámetros para la función de extracción de datos.
  */
 export interface ExtractDataParams {
-  sourceOrgAlias: string;
+  username?: string; // Proveniente de -u <username> o selección interactiva (puede ser alias o username)
+  targetAlias?: string; // Proveniente de --target-alias (CLI) o selección interactiva
   query?: string; // Hacer SOQL opcional si SOSL se proporciona
   soslQuery?: string; // Nuevo parámetro para consultas SOSL
   outputPath?: string; // Opcional para el modo interactivo, se puede inferir
@@ -81,21 +84,42 @@ export async function extractData(params: ExtractDataParams) {
   const spinner = ora('Cargando configuración...').start();
 
   try {
-    // La configuración se cargará de forma diferente si se llama desde la CLI
-    // Para el modo interactivo, asumimos que el alias ya está validado.
     let config = await loadConfig('./config.json'); // Cargar config.json por defecto
+
+    let orgToUse: string | undefined = undefined;
+
+    // Lógica de selección de Org según el diseño técnico
+    if (params.targetAlias) {
+      orgToUse = params.targetAlias;
+      logger.info(`Usando alias especificado por --target-alias: ${orgToUse}`);
+    } else if (params.username) {
+      orgToUse = params.username;
+      logger.info(`Usando username/alias especificado por -u: ${orgToUse}`);
+    } else {
+      spinner.text = 'Determinando organización predeterminada del proyecto...';
+      const defaultOrg = await aliasManagerService.getProjectDefaultOrg();
+      if (defaultOrg && defaultOrg.alias) {
+        orgToUse = defaultOrg.alias;
+        logger.info(`Usando alias predeterminado del proyecto: ${orgToUse}`);
+      } else {
+        spinner.fail('No se especificó organización y no hay predeterminada en el proyecto.');
+        throw new Error("Debe especificar una organización de origen con --target-alias <alias> o -u <username>, o configurar una organización predeterminada para el proyecto.");
+      }
+    }
+
+    if (!orgToUse) { // Doble chequeo, aunque la lógica anterior debería cubrirlo
+        throw new Error("No se pudo determinar la organización de origen.");
+    }
     
-    const sourceAlias = params.sourceOrgAlias;
+    const sourceAlias = orgToUse; // Renombrar para mantener consistencia con el resto del código existente
     const soqlQuery = params.query;
     const soslQueryString = params.soslQuery;
     let outputPath = params.outputPath;
-
-
-    // Asegurarse de que la organización de origen existe en la configuración o es un alias SFDX válido
-    if (!config || !config.orgs || !config.orgs[sourceAlias]) {
-      logger.warn(`No se encontró configuración de organización para '${sourceAlias}'. Se intentará usar SFDX.`);
-    }
     
+    // La validación de config.orgs[sourceAlias] se omite aquí porque 'auth.getSalesforceConnection'
+    // ya maneja la obtención de la conexión basada en el alias/username,
+    // y 'AliasManagerService' se encarga de la validez del alias.
+
     if (!soqlQuery && !soslQueryString) {
       throw new Error("Se debe proporcionar una consulta SOQL (query) o SOSL (soslQuery) para la extracción.");
     }

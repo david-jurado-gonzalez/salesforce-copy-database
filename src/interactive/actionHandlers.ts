@@ -23,6 +23,8 @@ import { generateSuggestedQueries } from './backupQuerySuggester.js';
 import { buildSoqlQueryInteractive } from '../interactive/queryAssistant.js'; // Añadida importación
 import { writeFileSync, existsSync, mkdirSync } from 'fs';
 import path from 'path';
+import { AliasManagerService } from '../core/aliasManagerService.js';
+import { ManageOrgAliasesMenuChoices, promptManageOrgAliasesMenu } from './menuDefinitions.js';
 import { AppConfig } from '../core/typeDefs.js'; // Importar AppConfig
 
 const logger = new Logger('ActionHandlers');
@@ -73,7 +75,7 @@ export async function handleSelectOrg(type: 'source' | 'target', appConfig: AppC
  */
 export async function handleExtractData(currentState: SessionState, appConfig: AppConfig, query?: string, targetOrgAliasForHistory?: string): Promise<void> {
     logger.info('Iniciando extracción de datos...');
-    let sourceOrg = currentState.sourceOrgAlias;
+    let sourceOrg = currentState.selectedOrgAlias || currentState.sourceOrgAlias; // Priorizar selectedOrgAlias
     let effectiveQuery = query;
 
     if (!sourceOrg) {
@@ -152,7 +154,7 @@ export async function handleExtractData(currentState: SessionState, appConfig: A
     try {
         logger.info(`Invocando extracción de datos de ${sourceOrg} con query: "${effectiveQuery}" a "${outputPath}"`);
         await coreExtractData({ // Renombrado para evitar conflicto de nombres
-            sourceOrgAlias: sourceOrg,
+            username: sourceOrg,
             query: effectiveQuery,
             outputPath: outputPath,
             apiType: 'auto'
@@ -213,12 +215,13 @@ export async function handleDeployData(currentState: SessionState, appConfig: Ap
  */
 export async function handleListObjects(currentState: SessionState, appConfig: AppConfig): Promise<void> {
     logger.info('Listando objetos...');
-    let orgAliasToList = currentState.sourceOrgAlias;
+    let orgAliasToList = currentState.selectedOrgAlias || currentState.sourceOrgAlias; // Priorizar selectedOrgAlias
 
     if (!orgAliasToList) {
-        logger.warn('No se ha seleccionado una organización de origen. Seleccionando una para listar objetos...');
-        await handleSelectOrg('source', appConfig); // Pasar appConfig
-        orgAliasToList = sessionManager.getState().sourceOrgAlias;
+        logger.warn('No se ha seleccionado una organización (ni activa por gestión de alias, ni de origen). Por favor, selecciónela primero.');
+        await handleSelectOrg('source', appConfig); // Esto establece sourceOrgAlias en la sesión
+        const newState = sessionManager.getState(); // Obtener el estado actualizado
+        orgAliasToList = newState.selectedOrgAlias || newState.sourceOrgAlias; // Reintentar con el estado actualizado
         if (!orgAliasToList) {
             logger.error('No se pudo seleccionar una organización para listar objetos. Abortando.');
             return;
@@ -391,13 +394,13 @@ export async function handleManageQueries(currentState: SessionState, appConfig:
  */
 export async function handleSuggestBackupQuery(currentState: SessionState, appConfig: AppConfig): Promise<void> {
     logger.info('Iniciando sugerencia de query de backup...');
-    let sourceOrgAlias = currentState.sourceOrgAlias;
+    let sourceOrgAlias = currentState.selectedOrgAlias || currentState.sourceOrgAlias; // Priorizar selectedOrgAlias
 
     if (!sourceOrgAlias) {
-        logger.warn('No se ha seleccionado una organización de origen. Por favor, selecciónela primero.');
-        await handleSelectOrg('source', appConfig); // Pasar appConfig
-        currentState = sessionManager.getState(); // Actualizar el estado después de la selección
-        sourceOrgAlias = currentState.sourceOrgAlias;
+        logger.warn('No se ha seleccionado una organización (ni activa por gestión de alias, ni de origen). Por favor, selecciónela primero.');
+        await handleSelectOrg('source', appConfig); // Esto establece sourceOrgAlias en la sesión
+        const newState = sessionManager.getState(); // Obtener el estado actualizado
+        sourceOrgAlias = newState.selectedOrgAlias || newState.sourceOrgAlias; // Reintentar con el estado actualizado
         if (!sourceOrgAlias) {
             logger.error('No se pudo seleccionar una organización de origen. Abortando sugerencia de query.');
             return;
@@ -546,13 +549,13 @@ export async function handleSuggestBackupQuery(currentState: SessionState, appCo
  */
 export async function handleExecuteSOSLQuery(currentState: SessionState, appConfig: AppConfig): Promise<void> {
     logger.info('Iniciando ejecución de consulta SOSL...');
-    let sourceOrg = currentState.sourceOrgAlias;
+    let sourceOrg = currentState.selectedOrgAlias || currentState.sourceOrgAlias; // Priorizar selectedOrgAlias
 
     if (!sourceOrg) {
-        logger.warn('No se ha seleccionado una organización de origen. Por favor, selecciónela primero.');
-        await handleSelectOrg('source', appConfig);
-        currentState = sessionManager.getState(); // Actualizar el estado después de la selección
-        sourceOrg = currentState.sourceOrgAlias;
+        logger.warn('No se ha seleccionado una organización (ni activa por gestión de alias, ni de origen). Por favor, selecciónela primero.');
+        await handleSelectOrg('source', appConfig); // Esto establece sourceOrgAlias en la sesión
+        const newState = sessionManager.getState(); // Obtener el estado actualizado
+        sourceOrg = newState.selectedOrgAlias || newState.sourceOrgAlias; // Reintentar con el estado actualizado
         if (!sourceOrg) {
             logger.error('No se pudo seleccionar una organización de origen. Abortando ejecución de SOSL.');
             return;
@@ -614,6 +617,220 @@ export async function handleExecuteSOSLQuery(currentState: SessionState, appConf
         logger.error(`Error durante la ejecución de la consulta SOSL: ${error.message}`);
         if (error.stack) {
             logger.debug(error.stack);
+        }
+    }
+}
+/**
+ * Maneja las acciones del submenú de gestión de alias de organización.
+ * @param currentState El estado actual de la sesión.
+ * @param appConfig La configuración de la aplicación.
+ */
+export async function handleManageOrgAliases(currentState: SessionState, appConfig: AppConfig): Promise<void> {
+    logger.info('Gestionando alias de organización...');
+    const aliasManager = new AliasManagerService(); // Constructor no toma argumentos
+    let keepManaging = true;
+
+    while (keepManaging) {
+        const choice = await promptManageOrgAliasesMenu();
+        let aliases: string[] = (await aliasManager.listOrgAliases()).map(a => a.alias); // Obtener lista fresca para cada iteración
+
+        try {
+            switch (choice) {
+                case ManageOrgAliasesMenuChoices.ListAliases:
+                    const detailedAliases = await aliasManager.listOrgAliases();
+                    if (detailedAliases.length === 0) {
+                        logger.info('No hay alias de organización configurados.');
+                    } else {
+                        logger.info('Alias de organización disponibles:');
+                        detailedAliases.forEach(aliasInfo => {
+                            let details = `  - ${aliasInfo.alias} (${aliasInfo.username}, ${aliasInfo.orgId}, ${aliasInfo.connectedStatus})`;
+                            if (aliasInfo.isDefaultUsername) details += ' [Default Username]';
+                            if (aliasInfo.isDefaultDevHubUsername) details += ' [Default DevHub]';
+                            if (aliasInfo.isProjectDefault) details += ' [Project Default]';
+                            logger.info(details);
+                        });
+                        const projectDefault = await aliasManager.getProjectDefaultOrg();
+                        if (projectDefault) {
+                            logger.info(`Alias predeterminado para el proyecto: ${projectDefault.alias} (${projectDefault.username})`);
+                        } else {
+                            logger.info('No hay un alias predeterminado establecido para este proyecto.');
+                        }
+                    }
+                    break;
+
+                case ManageOrgAliasesMenuChoices.SelectActiveAlias:
+                    if (aliases.length === 0) {
+                        logger.warn('No hay alias disponibles para seleccionar. Por favor, añada una organización primero.');
+                        break;
+                    }
+                    const { aliasToSelect } = await inquirer.prompt([
+                        {
+                            type: 'list',
+                            name: 'aliasToSelect',
+                            message: 'Seleccione el alias para activar en esta sesión:',
+                            choices: aliases,
+                        },
+                    ]);
+                    sessionManager.updateState({ selectedOrgAlias: aliasToSelect, sourceOrgAlias: aliasToSelect }); // Actualiza el alias activo y el de origen
+                    logger.info(`Alias activo para la sesión: ${aliasToSelect}. También establecido como organización de origen.`);
+                    break;
+
+                case ManageOrgAliasesMenuChoices.AddOrAuthenticateAlias:
+                    const { instanceUrl } = await inquirer.prompt([
+                        {
+                            type: 'list',
+                            name: 'instanceUrl',
+                            message: 'Seleccione la URL de instancia de Salesforce:',
+                            choices: [
+                                { name: 'Producción / Developer Edition (login.salesforce.com)', value: 'https://login.salesforce.com' },
+                                { name: 'Sandbox (test.salesforce.com)', value: 'https://test.salesforce.com' },
+                                { name: 'URL personalizada', value: 'custom' }
+                            ],
+                            default: 'https://login.salesforce.com',
+                        }
+                    ]);
+
+                    let finalInstanceUrl = instanceUrl;
+                    if (instanceUrl === 'custom') {
+                        const { customUrl } = await inquirer.prompt([
+                            {
+                                type: 'input',
+                                name: 'customUrl',
+                                message: 'Ingrese la URL de instancia personalizada (ej. https://mycompany.my.salesforce.com):',
+                                validate: (input: string) => /^https:\/\/[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(input) ? true : 'URL inválida.'
+                            }
+                        ]);
+                        finalInstanceUrl = customUrl;
+                    }
+                    
+                    const { aliasToSet } = await inquirer.prompt([
+                        {
+                            type: 'input',
+                            name: 'aliasToSet',
+                            message: 'Ingrese un alias para esta organización (opcional, se usará el nombre de usuario si se deja vacío):',
+                        }
+                    ]);
+                    try {
+                        // aliasToSet es string (puede ser vacía), finalInstanceUrl es string | undefined
+                        const loginResult = await aliasManager.loginOrg(aliasToSet, finalInstanceUrl);
+                        if (loginResult.success) {
+                            logger.info(`Autenticación para '${aliasToSet || "nueva org"}' (${finalInstanceUrl || 'instancia predeterminada'}) iniciada/exitosa. ${loginResult.message || ''}`);
+                            // Actualizar la lista de alias en la sesión
+                            const updatedAliases = (await aliasManager.listOrgAliases()).map(a => a.alias);
+                            sessionManager.updateState({ availableOrgAliases: updatedAliases });
+                        } else {
+                            logger.error(`Fallo al autenticar '${aliasToSet || "nueva org"}': ${loginResult.message || 'Error desconocido.'}`);
+                        }
+                    } catch (error: any) { // Captura errores de inquirer o listOrgAliases
+                        logger.error(`Error durante el proceso de añadir/autenticar alias: ${error.message}`);
+                    }
+                    break;
+
+                case ManageOrgAliasesMenuChoices.RemoveOrLogoutAlias:
+                    if (aliases.length === 0) {
+                        logger.warn('No hay alias para eliminar/cerrar sesión.');
+                        break;
+                    }
+                    const { aliasToRemove } = await inquirer.prompt([
+                        {
+                            type: 'list',
+                            name: 'aliasToRemove',
+                            message: 'Seleccione el alias de la organización de la que desea cerrar sesión:',
+                            choices: aliases,
+                        },
+                    ]);
+                    const { confirmRemove } = await inquirer.prompt([
+                        {
+                            type: 'confirm',
+                            name: 'confirmRemove',
+                            message: `¿Está seguro de que desea cerrar la sesión y eliminar el alias '${aliasToRemove}'? Esto no elimina la organización de Salesforce, solo la desconecta de la CLI.`,
+                            default: false,
+                        },
+                    ]);
+                    if (confirmRemove) {
+                        try {
+                            const logoutResult = await aliasManager.logoutOrg(aliasToRemove, true); // all=true para desautorizar globalmente
+                            if (logoutResult.success) {
+                                logger.info(`Se ha cerrado la sesión de la organización con alias: ${aliasToRemove}. ${logoutResult.message || ''}`);
+                                // Actualizar la lista de alias en la sesión
+                                 const updatedAliasesList = (await aliasManager.listOrgAliases()).map(a => a.alias);
+                                 sessionManager.updateState({ availableOrgAliases: updatedAliasesList });
+                                 if (sessionManager.getState().selectedOrgAlias === aliasToRemove) {
+                                     sessionManager.updateState({ selectedOrgAlias: undefined, sourceOrgAlias: undefined });
+                                     logger.info(`El alias activo '${aliasToRemove}' ha sido eliminado. Por favor, seleccione un nuevo alias activo.`);
+                                 }
+                                 if (sessionManager.getState().targetOrgAlias === aliasToRemove) {
+                                    sessionManager.updateState({ targetOrgAlias: undefined });
+                                    logger.info(`El alias de destino '${aliasToRemove}' ha sido eliminado.`);
+                                }
+                            } else {
+                                logger.error(`Error al cerrar sesión de la organización ${aliasToRemove}: ${logoutResult.message || 'Error desconocido.'}`);
+                            }
+                        } catch (error: any) { // Captura errores de listOrgAliases u otros inesperados
+                            logger.error(`Error durante el proceso de cerrar sesión de la organización: ${error.message}`);
+                        }
+                    }
+                    break;
+
+                case ManageOrgAliasesMenuChoices.SetProjectDefaultAlias:
+                    if (aliases.length === 0) {
+                        logger.warn('No hay alias disponibles para establecer como predeterminado.');
+                        break;
+                    }
+                    const { aliasToSetAsDefault } = await inquirer.prompt([
+                        {
+                            type: 'list',
+                            name: 'aliasToSetAsDefault',
+                            message: 'Seleccione el alias para establecer como predeterminado para este proyecto:',
+                            choices: aliases,
+                        },
+                    ]);
+                    try {
+                        await aliasManager.setProjectDefaultOrg(aliasToSetAsDefault);
+                        logger.info(`Alias '${aliasToSetAsDefault}' establecido como predeterminado para este proyecto.`);
+                    } catch (error: any) {
+                        logger.error(`Error al establecer el alias predeterminado: ${error.message}`);
+                    }
+                    break;
+                
+                case ManageOrgAliasesMenuChoices.UnsetProjectDefaultAlias:
+                    const currentDefault = await aliasManager.getProjectDefaultOrg();
+                    if (!currentDefault) {
+                        logger.info('No hay un alias predeterminado establecido para este proyecto.');
+                        break;
+                    }
+                    const { confirmUnset } = await inquirer.prompt([
+                        {
+                            type: 'confirm',
+                            name: 'confirmUnset',
+                            message: `¿Está seguro de que desea quitar '${currentDefault.alias}' como el alias predeterminado del proyecto?`,
+                            default: true,
+                        }
+                    ]);
+                    if (confirmUnset) {
+                        try {
+                            await aliasManager.unsetProjectDefaultOrg();
+                            logger.info(`Se ha quitado el alias predeterminado del proyecto.`);
+                        } catch (error: any) {
+                            logger.error(`Error al quitar el alias predeterminado del proyecto: ${error.message}`);
+                        }
+                    }
+                    break;
+
+                case ManageOrgAliasesMenuChoices.BackToMainMenu:
+                    keepManaging = false;
+                    break;
+
+                default:
+                    logger.warn('Opción no reconocida. Por favor, intente de nuevo.');
+                    break;
+            }
+        } catch (error: any) {
+            logger.error(`Error en la gestión de alias: ${error.message}`);
+        }
+        // Pausa para que el usuario pueda leer el output antes de volver a mostrar el menú
+        if (keepManaging) {
+            await inquirer.prompt([{ type: 'input', name: 'continue', message: 'Presione Enter para continuar...' }]);
         }
     }
 }

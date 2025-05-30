@@ -24,10 +24,66 @@ Migrar datos entre entornos de Salesforce (ej: de Producción a una Sandbox, o e
   * **Seguro por Defecto:** Pide confirmación antes de ejecutar operaciones que modifiquen datos en un entorno de destino.
   * **Modo Interactivo Guiado:** Una interfaz paso a paso para configurar y ejecutar operaciones, incluyendo la gestión de consultas SOQL y la generación asistida de consultas para backups. Ideal para usuarios nuevos o para tareas complejas.
   * **Listado Directo de Objetos:** Accede rápidamente a una lista de todos los SObjects disponibles en tu organización de origen a través del modo interactivo. Consulta la [Guía de Listar Objetos](.localdevserver/docs/user_guide/Modo_Interactivo_Listar_Objetos.md) para más detalles.
-* **Extracción de Datos Asistida (Modo Interactivo):** Configura y ejecuta extracciones de datos complejas, incluyendo la gestión de consultas SOQL y la selección de API, de forma guiada. Consulta la [Guía de Extraer Datos (Modo Interactivo)](.localdevserver/ia-private/projects/salesforce-copy-database/docs/user_guides/interactive_mode/extract_data.md) para más detalles.
+*   **Gestión Centralizada de Alias de Organización:** Permite gestionar y visualizar los alias de Salesforce CLI directamente desde la herramienta, facilitando la selección de la organización activa para operaciones como la extracción de datos, tanto en modo CLI como interactivo.
+*   **Extracción de Datos Asistida (Modo Interactivo):** Configura y ejecuta extracciones de datos complejas, incluyendo la gestión de consultas SOQL y la selección de API, de forma guiada. Consulta la [Guía de Extraer Datos (Modo Interactivo)](projects/salesforce-copy-database/docs/user_guides/interactive_mode/extract_data.md) para más detalles.
   * **¡Nuevo! Asistente Interactivo de Consultas SOQL:** Dentro de la extracción de datos en modo interactivo, ahora puedes construir tus consultas SOQL paso a paso. El asistente te ayuda a seleccionar SObjects, campos (incluyendo campos de relaciones) y a definir condiciones `WHERE`, minimizando errores y facilitando la exploración de datos.
 
 * **Soporte para Consultas SOSL:** Permite ejecutar búsquedas SOSL (Salesforce Object Search Language) directamente a través del comando `extract` usando el parámetro `--sosl`. Ideal para buscar términos específicos a través de múltiples SObjects simultáneamente. Los resultados de cada SObject encontrado se guardan en archivos CSV separados.
+## 🗂️ Gestión de Alias de Organización
+
+La herramienta ahora ofrece una gestión mejorada de los alias de organización de Salesforce, permitiendo una selección más sencilla y una visualización clara de las organizaciones disponibles. Esto simplifica las operaciones al asegurar que siempre se trabaje con el alias correcto.
+
+### Uso en CLI: Parámetro `--target-alias` para `extract`
+
+El comando `extract` ahora soporta el parámetro `--target-alias` para especificar la organización de destino para la extracción de datos. Esto es útil cuando se desea extraer datos de una organización y guardarlos en un directorio de trabajo asociado a un alias específico, incluso si no es la organización de origen.
+
+*   `--target-alias, -T`: (Opcional) El alias de la organización de destino para la extracción. Si se proporciona, los datos extraídos se guardarán en el directorio `workdir/<target-alias>/data/`. Si no se especifica, se usará el alias de la organización de origen (`--source`) para determinar la ruta de guardado.
+
+**Ejemplos:**
+
+1.  **Extraer datos de `dev1` y guardarlos en `workdir/dev1/data/` (comportamiento por defecto):**
+    ```bash
+    node dist/src/main.js extract -s dev1 -q "SELECT Id, Name FROM Account"
+    ```
+
+2.  **Extraer datos de `dev1` pero guardarlos en `workdir/qa-org/data/`:**
+    ```bash
+    node dist/src/main.js extract -s dev1 -q "SELECT Id, Name FROM Account" --target-alias qa-org
+    ```
+
+### Uso en Modo Interactivo: "Gestionar Alias de Organización"
+
+El modo interactivo ha sido mejorado con una nueva opción de menú principal para gestionar los alias de organización, lo que proporciona una experiencia de usuario más intuitiva.
+
+1.  **Menú Principal:** Al iniciar el modo interactivo (`npm start -- interactive`), ahora encontrarás la opción "Gestionar Alias de Organización".
+    ```
+    ¿Qué acción te gustaría realizar?
+    1. Extraer datos
+    2. Desplegar datos
+    3. Listar objetos SObject
+    4. Gestionar Alias de Organización
+    5. Salir
+    Elige una opción: 4
+    ```
+
+2.  **Sub-menús y Acciones:** Dentro de esta opción, podrás:
+    *   **Listar Alias de Organización:** Ver todos los alias de Salesforce CLI disponibles en tu entorno, junto con su estado de autenticación.
+    *   **Seleccionar Alias Activo:** Elegir un alias para que sea el "alias activo" de la sesión. Este alias se utilizará por defecto en operaciones posteriores, como la "Extracción de Datos", simplificando la entrada de parámetros.
+    *   **Refrescar Alias:** Actualizar la lista de alias disponibles, útil si has autenticado nuevas organizaciones o modificado alias fuera de la herramienta.
+
+3.  **Impacto en Operaciones Interactivas:**
+    *   **Extracción de Datos:** Cuando selecciones la opción "Extraer datos" en el menú principal, si ya has establecido un alias activo, la herramienta te sugerirá automáticamente ese alias como organización de origen, o como alias de destino para guardar los datos, agilizando el proceso.
+
+### Puntos de Integración Clave
+
+Esta funcionalidad se integra con varios módulos existentes para proporcionar una experiencia fluida:
+
+*   [`src/core/aliasManagerService.ts`](src/core/aliasManagerService.ts): Nuevo módulo centralizado para la lógica de gestión de alias (listado, selección, refresco).
+*   [`src/commands/extractCommand.ts`](src/commands/extractCommand.ts): Modificado para aceptar el nuevo parámetro `--target-alias`.
+*   [`src/interactive/menuDefinitions.ts`](src/interactive/menuDefinitions.ts): Define la nueva opción "Gestionar Alias de Organización" en el menú principal.
+*   [`src/interactive/actionHandlers.ts`](src/interactive/actionHandlers.ts): Contiene la lógica para manejar las acciones del menú de gestión de alias.
+*   [`src/interactive/sessionState.ts`](src/interactive/sessionState.ts): Almacena el alias de organización activo seleccionado por el usuario durante la sesión interactiva.
+
 ## Prerequisites
 
 Antes de empezar, asegúrate de tener instalado:

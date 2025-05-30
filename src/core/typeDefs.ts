@@ -87,5 +87,19 @@ export interface SObjectDescribe {
   childRelationships?: ChildRelationship[]; // Usamos el tipo ChildRelationship
 }
 
+// Interfaz para la información de los alias de organización
+export interface OrgAliasInfo {
+  alias: string;
+  username: string;
+  orgId: string;
+  instanceUrl: string;
+  connectedStatus: 'Connected' | 'Not Connected' | 'Unknown';
+  isDefaultUsername: boolean;
+  isDefaultDevHubUsername: boolean;
+  isProjectDefault?: boolean;
+  // Otros campos relevantes de 'sf org list --all --json'
+  // por ejemplo: lastUsedDate, sfdxAuthUrl, etc.
+}
+
 // Estructura del mapa de IDs
 export type IdMap = { [sourceId: string]: string };
