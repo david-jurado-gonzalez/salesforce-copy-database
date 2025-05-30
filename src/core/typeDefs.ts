@@ -72,21 +72,36 @@ export interface Field {
   unique?: boolean;
   relationshipName: string | null | undefined;
   referenceTo: string[] | null | undefined;
-  length?: number; // Añadido por si es útil, común en describe
-  precision?: number; // Añadido por si es útil
-  scale?: number; // Añadido por si es útil
-  picklistValues?: any[] | null; // Ajustado para ser compatible con jsforce
+  length?: number;
+  precision?: number;
+  scale?: number;
+  digits?: number; // Añadido
+  picklistValues?: any[] | null;
+  queryable: boolean; // Añadido
+  calculated?: boolean; // Añadido
+  calculatedFormula?: string | null; // Añadido
+  defaultValueFormula?: string | null; // Añadido
+  externalId?: boolean; // Añadido
+  autoNumber?: boolean; // Añadido
+  formulaTreatNullNumberAsZero?: boolean; // Añadido
+  cascadeDelete?: boolean; // Añadido
+  restrictedDelete?: boolean; // Añadido
+  writeRequiresMasterRead?: boolean; // Añadido
 }
 
 export interface SObjectDescribe {
   name: string;
   label: string;
+  labelPlural: string; // Añadido
+  keyPrefix: string | null; // Añadido
   custom: boolean;
+  feedEnabled: boolean; // Añadido
   queryable: boolean;
   retrieveable: boolean; // Añadido para soportar la detección de Tooling API
   url?: string; // Añadido para soportar la detección de Tooling API (describe.url)
   fields: Field[];
   childRelationships?: ChildRelationship[];
+  recordTypeInfos?: any[]; // Añadido
 }
 
 // Interfaz para la información de los alias de organización

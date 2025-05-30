@@ -291,6 +291,25 @@ Este modo es especialmente útil para:
 
 Al iniciar, se presentará un menú principal para elegir la acción (Extraer, Desplegar, Listar Objetos, etc.) y se solicitarán los parámetros necesarios paso a paso.
 
+### `backup`
+
+Crea un backup completo o parcial de una organización de Salesforce, incluyendo metadatos de SObjects, datos (en formato CSV), y un grafo de dependencias. El backup se guarda en un directorio estructurado.
+
+**Sintaxis:**
+`npm start -- backup --source-org <alias> --output-dir <directorio> [opciones]`
+
+  * `--source-org, -s <alias>`: (Requerido) El alias de la organización de Salesforce de origen desde la cual se realizará el backup. También se puede usar `--target-alias` o `--username`.
+  * `--output-dir, -o <directorio>`: (Requerido) El directorio donde se guardará la estructura del backup.
+  * `--manifest, -m <ruta>`: (Opcional) Ruta a un archivo de manifiesto existente para guiar el proceso de backup. Si se omite, se generará uno nuevo.
+  * `--include-metadata`: (Opcional) Incluye los metadatos de los SObjects (descripciones de campos, etc.) en el backup. Por defecto es `true` si no se especifica `--data-only`.
+  * `--data-only`: (Opcional) Realiza solo el backup de los datos (archivos CSV), excluyendo metadatos y el grafo de dependencias.
+  * `--metadata-only`: (Opcional) Realiza solo el backup de los metadatos de los SObjects y el grafo de dependencias, excluyendo los datos.
+  * `--api-version <version>`: (Opcional) Versión de la API de Salesforce a utilizar.
+  * `--max-file-size <tamaño>`: (Opcional) Tamaño máximo para los archivos CSV generados (ej: '10MB', '1GB').
+  * `--exclude-fields <campos>`: (Opcional) Lista de campos separados por comas a excluir del backup (ej: `CreatedDate,LastModifiedDate`).
+  * `--sobjects <lista_sobjects>`: (Opcional) Lista de SObjects separados por comas a incluir en el backup (ej: `Account,Contact,MyCustomObject__c`). Mutuamente excluyente con `--all-sobjects`.
+  * `--all-sobjects`: (Opcional) Realiza el backup de todos los SObjects accesibles en la organización. Mutuamente excluyente con `--sobjects`.
+  * `--name-fields-only`: (Opcional) Para los campos de relación (lookup/master-detail), extrae solo los campos de nombre del registro relacionado en lugar de todos sus campos.
 ## 💡 Casos de Uso y Ejemplos
 
 ### Escenario 1: Hacer un backup de todas las Cuentas de un entorno
@@ -470,6 +489,114 @@ npm start -- i
 ```
 
 **Resultado:**
+-----
+
+### Escenario 5: Realizar Backups de Datos y Metadatos
+
+La funcionalidad de `backup` te permite crear instantáneas estructuradas de tu organización de Salesforce, incluyendo datos, metadatos de SObjects y grafos de dependencia.
+
+#### 5.1 Backup Completo de SObjects Específicos (Account y Contact)
+
+Quieres hacer un backup completo (metadatos y datos) de los objetos `Account` y `Contact` de tu organización `dev-org` y guardarlo en el directorio `./my-backups/dev-org-backup-full`.
+
+**Comando:**
+
+```bash
+node dist/src/main.js backup -s dev-org -o ./my-backups/dev-org-backup-full --sobjects "Account,Contact"
+```
+
+**Resultado Esperado:**
+
+Se creará la siguiente estructura de directorios y archivos dentro de `./my-backups/dev-org-backup-full`:
+
+```
+./my-backups/dev-org-backup-full/
+├── backup-manifest.json
+├── sfdc-test-data/
+│   ├── Account.csv
+│   └── Contact.csv
+├── sfdc-metadata/
+│   ├── sobjects/
+│   │   ├── Account.json
+│   │   └── Contact.json
+│   └── dependencyGraph.json
+└── logs/
+    └── backup-log.txt
+```
+*   `backup-manifest.json`: Contiene metainformación sobre el proceso de backup.
+*   `sfdc-test-data/`: Contiene los datos exportados en formato CSV.
+*   `sfdc-metadata/sobjects/`: Contiene la descripción de los metadatos de cada SObject.
+*   `sfdc-metadata/dependencyGraph.json`: Contiene el grafo de dependencias entre los SObjects del backup.
+*   `logs/`: Contiene logs detallados de la operación.
+
+#### 5.2 Backup de Solo Datos para Todos los SObjects
+
+Necesitas una copia de todos los datos de todos los SObjects de la organización `prod-clone` para un análisis, sin necesidad de los metadatos ni el grafo de dependencias. El backup se guardará en `./my-backups/prod-clone-data-only`.
+
+**Comando:**
+
+```bash
+node dist/src/main.js backup -s prod-clone -o ./my-backups/prod-clone-data-only --all-sobjects --data-only
+```
+
+**Resultado Esperado:**
+
+La estructura en `./my-backups/prod-clone-data-only` contendrá:
+
+```
+./my-backups/prod-clone-data-only/
+├── backup-manifest.json
+├── sfdc-test-data/
+│   ├── Account.csv
+│   ├── Contact.csv
+│   ├── Opportunity.csv
+│   └── ... (todos los demás SObjects con datos)
+└── logs/
+    └── backup-log.txt
+```
+No se crearán los directorios `sfdc-metadata/sobjects` ni el archivo `dependencyGraph.json`.
+
+#### 5.3 Backup de Solo Metadatos para SObjects Específicos
+
+Quieres obtener la definición de metadatos y el grafo de dependencias para los objetos `Order` y `OrderItem` de la organización `uat-org`, sin extraer los datos. El backup se guardará en `./my-backups/uat-metadata-backup`.
+
+**Comando:**
+
+```bash
+node dist/src/main.js backup -s uat-org -o ./my-backups/uat-metadata-backup --sobjects "Order,OrderItem" --metadata-only
+```
+
+**Resultado Esperado:**
+
+La estructura en `./my-backups/uat-metadata-backup` contendrá:
+
+```
+./my-backups/uat-metadata-backup/
+├── backup-manifest.json
+├── sfdc-metadata/
+│   ├── sobjects/
+│   │   ├── Order.json
+│   │   └── OrderItem.json
+│   └── dependencyGraph.json
+└── logs/
+    └── backup-log.txt
+```
+No se creará el directorio `sfdc-test-data/`.
+
+#### 5.4 Backup de SObjects Específicos Excluyendo Campos Sensibles
+
+Se requiere un backup de `Account` y `CustomObject__c` de la organización `staging-org`, pero excluyendo los campos `AnnualRevenue` de `Account` y `SecretToken__c` de `CustomObject__c`. El backup se guardará en `./my-backups/staging-backup-filtered`.
+
+**Comando:**
+
+```bash
+node dist/src/main.js backup -s staging-org -o ./my-backups/staging-backup-filtered --sobjects "Account,CustomObject__c" --exclude-fields "Account.AnnualRevenue,CustomObject__c.SecretToken__c"
+```
+
+**Resultado Esperado:**
+
+*   Los archivos CSV para `Account` y `CustomObject__c` en `./my-backups/staging-backup-filtered/sfdc-test-data/` no contendrán las columnas `AnnualRevenue` y `SecretToken__c` respectivamente.
+*   Los archivos JSON de metadatos en `sfdc-metadata/sobjects/` seguirán describiendo todos los campos, pero los datos correspondientes a los campos excluidos no estarán presentes en los CSV.
 Las Oportunidades y sus Líneas de Producto se han extraído de `uat` y desplegado correctamente en `dev-sbx`, todo ello guiado por la interfaz interactiva, simplificando el proceso y reduciendo la posibilidad de errores.
 
 ## 🛠️ Desarrollo y Depuración
