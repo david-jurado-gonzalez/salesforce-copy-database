@@ -19,7 +19,7 @@ Migrar datos entre entornos de Salesforce (ej: de Producción a una Sandbox, o e
   * **Integración con Salesforce CLI:** Utiliza tus alias de `sfdx` o `sf` ya autenticados para una conexión segura y sin esfuerzo.
   * **Selección Inteligente de API:** Detecta automáticamente si una consulta SOQL contiene subconsultas y elige la API de Salesforce adecuada (Query API para subconsultas, Bulk API para consultas simples) para optimizar la extracción. Permite forzar el uso de una API específica con `--api-type`.
   * **Manejo de Subconsultas (Padre-Hijo):** Cuando se usan subconsultas, la herramienta "desenrolla" los datos JSON anidados de la Query API en archivos CSV separados para objetos padre e hijo. Para mantener la vinculación de la relación, se añade una columna artificial al CSV del objeto hijo con el patrón `NombreCampoRelacion` (ej. `AccountId`). Esta columna contiene el `Id` del registro padre de la organización de origen, siendo vital para el mapeo durante el despliegue.
-  * **Despliegue en Dos Fases:** Maneja dependencias circulares o complejas mediante un proceso de inserción (`INSERT`) seguido de una actualización (`UPDATE`).
+  * **Despliegue en Dos Fases:** Maneja dependencias circulares o complejas mediante un proceso de dos fases. La **Fase 1 (`processInsertPass`)** realiza la inserción inicial de registros y genera mapas de IDs. La **Fase 2 (`processUpdatePass`)** utiliza estos mapas de IDs para resolver y actualizar las relaciones de búsqueda (lookups) que no pudieron ser establecidas durante la Fase 1, asegurando la integridad referencial. Esta fase también genera logs de errores específicos para las actualizaciones (ej. `<ObjectName>-update-errors.json`).
   * **Interfaz de Usuario Clara:** Ofrece feedback constante con indicadores de progreso, logs de colores y resúmenes de operación.
   * **Seguro por Defecto:** Pide confirmación antes de ejecutar operaciones que modifiquen datos en un entorno de destino.
   * **Modo Interactivo Guiado:** Una interfaz paso a paso para configurar y ejecutar operaciones, incluyendo la gestión de consultas SOQL y la generación asistida de consultas para backups. Ideal para usuarios nuevos o para tareas complejas.
@@ -367,21 +367,22 @@ node dist/src/main.js deploy -s dev1 -t full-sandbox
 > ✓ Conexiones establecidas.
 > ✓ Analizando dependencias de objetos...
 > ✓ Orden de despliegue calculado: Account -> Contact
+> info: Objetos que requieren 2 fases (actualización): Contact
 
 > info: --- FASE 1: Inserción de Registros ---
 > ✓ [FASE 1 - INSERT] Account: 52 creados, 0 fallidos.
-> ✓ [FASE 1 - INSERT] Contact: 124 creados, 2 fallidos.
+> ✓ [FASE 1 - INSERT] Contact: 118 creados, 2 fallidos.
 
 > info: --- FASE 2: Actualización de Relaciones (Lookups) ---
-> ✓ [FASE 2 - UPDATE] Account: Finalizado (simulado).
-> ✓ [FASE 2 - UPDATE] Contact: Finalizado (simulado).
+> ✓ [FASE 2 - UPDATE] Account: 0 actualizados, 0 fallidos de 0 procesados.
+> ✓ [FASE 2 - UPDATE] Contact: 8 actualizados, 2 fallidos de 10 procesados.
 
 > info: --- Resumen Final del Despliegue ---
 >
 > Objeto  | Procesados | Creados/Actualizados | Fallidos
 > --------|------------|----------------------|---------
 > Account | 52         | 52                   | 0
-> Contact | 126        | 124                  | 2
+> Contact | 130        | 126                  | 4
 ```
 
 -----
