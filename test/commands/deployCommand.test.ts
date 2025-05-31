@@ -3,7 +3,7 @@ import * as sinon from 'sinon';
 import sinonChai from 'sinon-chai';
 import chaiAsPromised from 'chai-as-promised';
 // import rewiremock from 'rewiremock';
-// import * as inquirer from 'inquirer';
+import inquirer from 'inquirer'; // Cambiado de 'import * as inquirer'
 import { Logger } from '../../src/core/logger.js'; // Importar Logger
 import { Auth } from '../../src/core/auth.js'; // Importar Auth
 
@@ -46,7 +46,7 @@ describe('deployCommand', () => {
     let loggerErrorStub: sinon.SinonStub;
     let loggerWarnStub: sinon.SinonStub;
     // let spinnerSucceedStub: sinon.SinonStub; // Comentado temporalmente para evitar TS6133
-    // let inquirerPromptStub: sinon.SinonStub; // Comentado temporalmente para evitar TS6133
+    let inquirerPromptStub: sinon.SinonStub;
     let getSalesforceConnectionStub: sinon.SinonStub;
     let loadConfigStub: sinon.SinonStub;
     let ensureDirStub: sinon.SinonStub;
@@ -61,7 +61,6 @@ describe('deployCommand', () => {
     let writeIdMapStub: sinon.SinonStub;
     let writeErrorLogStub: sinon.SinonStub;
     // let targetConnBulkLoadStub: sinon.SinonStub; // Comentado temporalmente para evitar TS6133
-    let processExitStub: sinon.SinonStub; // Comentado temporalmente para evitar TS6133
  
     const mockConfig: AppConfig = {
         orgs: {
@@ -85,12 +84,15 @@ describe('deployCommand', () => {
     before(async () => {
         sandbox = sinon.createSandbox();
 
-        // Configure mocks for logger (stub prototype methods)
-        // loggerInfoStub = sandbox.stub(Logger.prototype, 'info'); // Comentado temporalmente
-        loggerErrorStub = sandbox.stub(Logger.prototype, 'error');
-        loggerWarnStub = sandbox.stub(Logger.prototype, 'warn');
+        // Configure mocks for logger (stub prototype methods) - MOVIDO A beforeEach
+        // loggerInfoStub = sandbox.stub(Logger.prototype, 'info');
+        // loggerErrorStub = sandbox.stub(Logger.prototype, 'error'); // MOVIDO A beforeEach
+        // loggerWarnStub = sandbox.stub(Logger.prototype, 'warn'); // MOVIDO A beforeEach
         // sandbox.stub(Logger.prototype, 'debug');
         // sandbox.stub(Logger.prototype, 'setLogLevel');
+
+        // Stub inquirer antes de importar deployCommandModule - MOVIDO A beforeEach
+        // inquirerPromptStub = sandbox.stub(inquirer, 'prompt'); // MOVIDO A beforeEach
 
         console.log('Iniciando importación de módulos en before()...');
         try {
@@ -110,10 +112,15 @@ describe('deployCommand', () => {
     });
 
     after(() => {
-        sandbox.restore();
+        // sandbox.restore(); // MOVIDO a afterEach
     });
 
 beforeEach(async () => {
+        // Stubs movidos desde before()
+        loggerErrorStub = sandbox.stub(Logger.prototype, 'error');
+        loggerWarnStub = sandbox.stub(Logger.prototype, 'warn');
+        inquirerPromptStub = sandbox.stub(inquirer, 'prompt');
+
 // Test local stubbing
     const localObj = {
         testMethod: () => 'original value'
@@ -132,10 +139,10 @@ beforeEach(async () => {
     // End test local stubbing
 
     // Configure mocks for process.exit FIRST (if any module init calls it)
-    processExitStub = sandbox.stub(process, 'exit');
+    // processExitStub = sandbox.stub(process, 'exit');
  
     // Configure mocks for inquirer
-    // inquirerPromptStub = sandbox.stub(inquirer, 'prompt');
+    // inquirerPromptStub = sandbox.stub(inquirer, 'prompt'); // Movido a before()
 
     // Configure mocks for ora
     // const mockSpinner = { // Comentado temporalmente
@@ -155,18 +162,23 @@ beforeEach(async () => {
     // loggerInfoStub?.resetHistory(); // Si se descomenta loggerInfoStub
 
 // Configure mocks for Auth
-    const mockAuthInstance = {
-        getSalesforceConnection: sandbox.stub().resolves({ // Provide a generic default mock connection
-            query: sandbox.stub().returnsThis(), // Common method used
-            sobject: sandbox.stub().returnsThis(), // Common method used
-            // Add other jsforce.Connection methods if DeployCommand commonly uses them directly by default
-        } as any),
-        getOrgAliases: sandbox.stub().resolves([]),
-        // Add other Auth instance methods if DeployCommand uses them, e.g.:
-        // getOrgUsername: sandbox.stub().resolves('testuser'),
-    };
-    getSalesforceConnectionStub = mockAuthInstance.getSalesforceConnection; // Assign for tests using this specific stub
-    sandbox.stub(Auth as any, 'getInstance').returns(mockAuthInstance as any); // Cast Auth to any
+    // const mockAuthInstance = { // Eliminado ya que no se usa
+    //     getSalesforceConnection: sandbox.stub().resolves({ // Provide a generic default mock connection
+    //         query: sandbox.stub().returnsThis(), // Common method used
+    //         sobject: sandbox.stub().returnsThis(), // Common method used
+    //         // Add other jsforce.Connection methods if DeployCommand commonly uses them directly by default
+    //     } as any),
+    //     getOrgAliases: sandbox.stub().resolves([]),
+    //     // Add other Auth instance methods if DeployCommand uses them, e.g.:
+    //     // getOrgUsername: sandbox.stub().resolves('testuser'),
+    // }; // Fin de mockAuthInstance eliminado
+    // getSalesforceConnectionStub = mockAuthInstance.getSalesforceConnection; // Ya no se asigna desde mockAuthInstance
+    // sandbox.stub(Auth as any, 'getInstance').returns(mockAuthInstance as any); // Eliminar esta línea, getInstance no existe estáticamente
+
+    // Stub de los métodos del prototipo de Auth
+    getSalesforceConnectionStub = sandbox.stub(Auth.prototype, 'getSalesforceConnection');
+    // Si se necesita mockear getOrgAliases:
+    // sandbox.stub(Auth.prototype, 'getOrgAliases').resolves([]);
 
     // fileManagerModule = await import('../../src/core/fileManager.js'); // Comentado: Usaremos import estático
     // Configure mocks for fileManager (stub exported functions)
@@ -237,8 +249,8 @@ beforeEach(async () => {
     });
 
     afterEach(() => {
+        sandbox.restore(); // RESTAURAR SANDBOX DESPUÉS DE CADA TEST
         // console.log('Limpiando configuración de rewiremock...');
-        // sandbox.restore(); // Movido a after()
         try {
             // rewiremock.disable();
             // console.log('Rewiremock deshabilitado correctamente');
@@ -276,13 +288,13 @@ beforeEach(async () => {
         // expect(processExitStub).to.have.been.calledWith(1); // El comando ya no llama a process.exit directamente, sino que lanza un error.
     });
  
-    // it('should cancel deployment if user does not confirm', async () => {
-    //     inquirerPromptStub.resolves({ confirm: false });
-    //     const options = { sourceOrgAlias: 'source', targetOrgAlias: 'target', configPath: 'config.json' };
-    //     await deployCommandModule.deployData(options);
-    //     expect(loggerWarnStub).to.have.been.calledWith('Despliegue cancelado por el usuario.');
-    //     expect(processExitStub).to.have.been.calledWith(0);
-    // });
+    it('should cancel deployment if user does not confirm', async () => {
+        inquirerPromptStub.resolves({ confirm: false });
+        const options = { sourceOrgAlias: 'source', targetOrgAlias: 'target', configPath: 'config.json' };
+        await expect(deployCommandModule.deployData(options)).to.be.rejectedWith('Despliegue cancelado por el usuario.');
+        expect(loggerWarnStub).to.have.been.calledWith('Despliegue cancelado por el usuario.');
+        // expect(processExitStub).to.have.been.calledWith(0); // El comando ya no llama a process.exit directamente
+    });
 
     // it('should proceed without confirmation if --force flag is used', async () => {
     //     inquirerPromptStub.resolves({ confirm: false }); // This should be ignored

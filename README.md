@@ -1,6 +1,6 @@
 ---
 creado: 2025-05-30
-actualizado: 2025-05-30
+actualizado: 2025-06-01
 ---
 # Salesforce Database Copier
 
@@ -310,6 +310,17 @@ Crea un backup completo o parcial de una organización de Salesforce, incluyendo
   * `--sobjects <lista_sobjects>`: (Opcional) Lista de SObjects separados por comas a incluir en el backup (ej: `Account,Contact,MyCustomObject__c`). Mutuamente excluyente con `--all-sobjects`.
   * `--all-sobjects`: (Opcional) Realiza el backup de todos los SObjects accesibles en la organización. Mutuamente excluyente con `--sobjects`.
   * `--name-fields-only`: (Opcional) Para los campos de relación (lookup/master-detail), extrae solo los campos de nombre del registro relacionado en lugar de todos sus campos.
+### `schema:visualize`
+
+Genera representaciones visuales del esquema de SObjects, como diagramas de entidad-relación, ayudando a comprender la estructura y las interconexiones de los datos.
+
+**Sintaxis:**
+`npm start -- schema:visualize --target-org <alias> [opciones]`
+
+  * `--target-org, -t <alias>`: (Requerido) El alias de la organización de Salesforce cuyo esquema se visualizará.
+  * (Consulta la guía detallada para ver todas las opciones disponibles, incluyendo formatos de salida, selección de objetos y modo interactivo).
+
+Para una descripción completa de sus capacidades, parámetros detallados y ejemplos de uso, consulta la [Guía del Comando schema:visualize](projects/salesforce-copy-database/docs/user_guide/schema_visualize_command.md).
 ## 💡 Casos de Uso y Ejemplos
 
 ### Escenario 1: Hacer un backup de todas las Cuentas de un entorno
