@@ -4,7 +4,7 @@
  */
 
 import inquirer from 'inquirer';
-import { SessionManager, SessionState } from './sessionState.js';
+import { SessionManager, /*SessionState*/ } from './sessionState.js';
 import {
     handleExtractData,
     handleDeployData,

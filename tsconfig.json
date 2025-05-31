@@ -1,13 +1,14 @@
 {
-    "compilerOptions": {
-      "target": "ES2022",
-      "module": "NodeNext",
-      "moduleResolution": "NodeNext",
-      "outDir": "./dist",
-      "esModuleInterop": true,
-      "forceConsistentCasingInFileNames": true,
-      "strict": true,
-      "skipLibCheck": true
-    },
-    "include": ["src/**/*", "test/**/*"]
-  }
+  "extends": "@salesforce/dev-config/tsconfig-strict",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "esModuleInterop": true,
+    "moduleResolution": "NodeNext", // Cambiado a NodeNext
+    "module": "NodeNext", // Cambiado a NodeNext
+    "target": "ES2022", // Cambiado a ES2022
+    "skipLibCheck": true // Asegurarse de que esté en true
+  },
+  "include": ["./src/**/*.ts"],
+  "exclude": ["./node_modules/**"]
+}

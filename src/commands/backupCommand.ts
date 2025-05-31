@@ -1,10 +1,10 @@
 // src/commands/backupCommand.ts
 import { Auth } from '../core/auth.js';
-import { loadConfig, ensureDir, writeRecordsToCsv } from '../core/fileManager.js'; // Removido getRelativePath
+import { fileManagerAPI } from '../core/fileManager.js'; // Removido getRelativePath
 import { Logger } from '../core/logger.js';
-import { extractDataBulk, extractDataQuery, extractSObjectNameFromSoql, describeSObject } from '../core/sfdc-api.js'; // Removido SObjectDescribe y Field
+import { /*extractDataBulk, extractDataQuery, extractSObjectNameFromSoql,*/ describeSObject } from '../core/sfdc-api.js'; // Removido SObjectDescribe y Field
 import { SObjectDescribe, Field as SObjectField } from '../core/typeDefs.js'; // Añadido import directo de tipos
-import { AliasManagerService } from '../core/aliasManagerService.js';
+// import { AliasManagerService } from '../core/aliasManagerService.js';
 import ora, { Ora } from 'ora';
 import path from 'path';
 import { promises as fs } from 'fs';
@@ -12,7 +12,7 @@ import { Connection } from 'jsforce';
 
 const logger = new Logger('BackupCommand');
 const auth = new Auth();
-const aliasManagerService = new AliasManagerService();
+// const aliasManagerService = new AliasManagerService();
 
 // Placeholder para obtener todos los SObjects consultables
 async function getAllSObjectNames(conn: Connection, spinner: Ora): Promise<string[]> {
@@ -209,7 +209,7 @@ export async function backupData(params: BackupDataParams): Promise<string> {
 
 
   try {
-    const config = await loadConfig('./config.json');
+    const config = await fileManagerAPI.loadConfig('./config.json');
 
     if (!params.sourceOrgIdentifier) {
       throw new Error("Debe especificar una organización de origen.");
@@ -224,19 +224,19 @@ export async function backupData(params: BackupDataParams): Promise<string> {
     backupFullPath = path.resolve(baseOutputDir, backupDirName);
     
     spinner.text = `Creando snapshot en: ${backupFullPath}`;
-    await ensureDir(backupFullPath);
+    await fileManagerAPI.ensureDir(backupFullPath);
 
     // Crear subdirectorios condicionalmente
     const shouldProcessData = !params.metadataOnly;
     const shouldProcessMetadata = backupManifest.includedMetadata; // Usar el valor ya calculado para el manifest
 
     if (shouldProcessData) {
-      await ensureDir(path.join(backupFullPath, 'data'));
+      await fileManagerAPI.ensureDir(path.join(backupFullPath, 'data'));
     }
     if (shouldProcessMetadata) {
-      await ensureDir(path.join(backupFullPath, 'metadata'));
+      await fileManagerAPI.ensureDir(path.join(backupFullPath, 'metadata'));
       if (backupManifest.includedDependencyGraph) { // Solo crear si se va a generar
-         await ensureDir(path.join(backupFullPath, 'dependencies'));
+         await fileManagerAPI.ensureDir(path.join(backupFullPath, 'dependencies'));
       }
     }
     spinner.succeed(`Snapshot creado en: ${backupFullPath}`);
@@ -319,7 +319,7 @@ export async function backupData(params: BackupDataParams): Promise<string> {
           });
 
           if (transformedRecords.length > 0) {
-              await writeRecordsToCsv(transformedRecords, csvFilePath);
+              await fileManagerAPI.writeRecordsToCsv(transformedRecords, csvFilePath);
               totalRecordsExtractedMap[sObjectName] = transformedRecords.length;
               spinner.succeed(`[${sObjectName}] ${transformedRecords.length} registros guardados en data/${sObjectName}.csv`);
             backupManifest.sObjectsData[sObjectName] = {
@@ -440,7 +440,7 @@ export async function backupData(params: BackupDataParams): Promise<string> {
     // 4. Creación del backup-manifest.json
     spinner.start('Creando manifiesto del backup...');
     // Determinar el manifestPath final
-    const finalManifestPath = params.manifestPath ? path.resolve(params.manifestPath) : path.join(backupFullPath, 'backup-manifest.json');
+    // const finalManifestPath = params.manifestPath ? path.resolve(params.manifestPath) : path.join(backupFullPath, 'backup-manifest.json');
     // Si params.manifestPath es un directorio, adjuntar 'backup-manifest.json'
     // Esta lógica debería estar en main.ts o ser más robusta aquí. Por ahora, asume que es un path de archivo o se usa el default.
     // Para simplificar, si params.manifestPath existe, lo usamos, sino el default.
@@ -460,7 +460,7 @@ export async function backupData(params: BackupDataParams): Promise<string> {
 
     // Asegurar que el directorio para un manifestPath personalizado exista
     if (params.manifestPath) {
-        await ensureDir(path.dirname(manifestFileToWrite));
+        await fileManagerAPI.ensureDir(path.dirname(manifestFileToWrite));
     }
     backupManifest.status = backupManifest.errors.length > 0 ? 'PARTIAL' : 'COMPLETED';
     let summaryParts: string[] = [];
@@ -510,8 +510,8 @@ export async function backupData(params: BackupDataParams): Promise<string> {
     
     try {
         if (params.manifestPath || backupFullPath) { // Solo intentar escribir si tenemos una ruta base
-            if (params.manifestPath) await ensureDir(path.dirname(manifestFileOnError));
-            else if (backupFullPath) await ensureDir(backupFullPath); // Asegurar que el directorio del snapshot exista
+            if (params.manifestPath) await fileManagerAPI.ensureDir(path.dirname(manifestFileOnError));
+            else if (backupFullPath) await fileManagerAPI.ensureDir(backupFullPath); // Asegurar que el directorio del snapshot exista
         }
         await fs.writeFile(manifestFileOnError, JSON.stringify(backupManifest, null, 2));
         logger.info(`Manifiesto de error del backup guardado en ${manifestFileOnError}`);

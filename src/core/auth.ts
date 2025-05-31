@@ -5,7 +5,7 @@ import fs from 'fs/promises';
 import os from 'os';
 import { exec } from 'child_process';
 import { Logger } from './logger.js'; // Importar la clase Logger
-import { AppConfig, OrgConfig } from './typeDefs.js';
+import { AppConfig, /*OrgConfig*/ } from './typeDefs.js';
 
 const CACHE_DIR = path.join(os.homedir(), '.sfdc-data-copier');
 const ALIAS_CACHE_FILE = path.join(CACHE_DIR, 'alias-cache.json');

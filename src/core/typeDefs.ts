@@ -1,5 +1,5 @@
 // src/core/typeDefs.ts
-import { Connection } from 'jsforce';
+// import { Connection } from 'jsforce';
 
 export interface OrgConfig {
   loginUrl?: string;

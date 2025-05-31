@@ -9,7 +9,7 @@ import { Logger } from '../core/logger.js';
 import { Auth } from '../core/auth.js';
 import { Connection } from 'jsforce';
 import { executeSoslQuery } from '../core/sfdc-api.js'; // Importar executeSoslQuery
-import { writeRecordsToCsv } from '../core/fileManager.js'; // Importar writeRecordsToCsv
+import { fileManagerAPI } from '../core/fileManager.js'; // Importar fileManagerAPI
 import { extractData as coreExtractData } from '../commands/extractCommand.js';
 import { deployData } from '../commands/deployCommand.js';
 import { listObjects } from '../commands/listObjectsCommand.js';
@@ -17,7 +17,7 @@ import {
     addQueryToHistory,
     deleteQueryFromHistory,
     getQueriesForOrg,
-    QueryHistoryEntry
+    // QueryHistoryEntry
 } from './queryHistoryManager.js';
 import { generateSuggestedQueries } from './backupQuerySuggester.js';
 import { buildSoqlQueryInteractive } from '../interactive/queryAssistant.js'; // Añadida importación
@@ -604,7 +604,7 @@ export async function handleExecuteSOSLQuery(currentState: SessionState, appConf
                 mkdirSync(outputDir, { recursive: true });
                 logger.info(`Directorio de salida creado: ${outputDir}`);
             }
-            await writeRecordsToCsv(results, outputPath);
+            await fileManagerAPI.writeRecordsToCsv(results, outputPath);
             logger.info(`Resultados de la consulta SOSL guardados en: ${outputPath}`);
         }
         

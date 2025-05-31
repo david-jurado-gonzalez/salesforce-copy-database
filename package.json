@@ -18,6 +18,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@salesforce/core": "^8.11.4",
+    "@salesforce/sf-plugins-core": "^12.2.2",
     "chalk": "^5.4.1",
     "commander": "^14.0.0",
     "csv-parse": "^5.6.0",
@@ -30,6 +32,7 @@
     "winston": "^3.17.0"
   },
   "devDependencies": {
+    "@salesforce/dev-config": "^4.3.1",
     "@types/chai": "^5.2.2",
     "@types/chai-as-promised": "^8.0.2",
     "@types/fs-extra": "^11.0.4",

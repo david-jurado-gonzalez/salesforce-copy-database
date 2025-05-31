@@ -2,8 +2,8 @@ import { expect, use } from 'chai';
 import * as sinon from 'sinon';
 import sinonChai from 'sinon-chai';
 import chaiAsPromised from 'chai-as-promised';
-import rewiremock from 'rewiremock';
-import * as path from 'path'; // Añadimos esta importación
+// import rewiremock from 'rewiremock';
+// import * as path from 'path'; // Añadimos esta importación
 
 // Original imports - these will be handled by rewiremock or imported dynamically
 // import { getSalesforceConnection } from '../../src/core/auth.js';
@@ -28,34 +28,34 @@ describe('getSalesforceConnection', () => {
     let jsforceConnectionStub: sinon.SinonStub;
 
     // These will be imported dynamically or proxied
-    let authModule: typeof import('../../src/core/auth.js');
+    // let authModule: typeof import('../../src/core/auth.js');
     let authInstance: import('../../src/core/auth.js').Auth;
-    let loggerModule: typeof import('../../src/core/logger.js');
-    let jsforceModule: any; // Changed to any
-    let fsPromisesModule: typeof import('fs/promises');
-    let osModule: typeof import('os');
+    // let loggerModule: typeof import('../../src/core/logger.js');
+    // let jsforceModule: any; // Changed to any
+    // let fsPromisesModule: typeof import('fs/promises');
+    // let osModule: typeof import('os');
     let pathModule: typeof import('path');
 
     beforeEach(async () => {
         sandbox = sinon.createSandbox();
         
         // Enable rewiremock
-        rewiremock.enable();
+        // rewiremock.enable();
 
         // Configure mocks for logger
         loggerInfoStub = sandbox.stub();
         loggerErrorStub = sandbox.stub();
         loggerDebugStub = sandbox.stub();
-        rewiremock(() => import('../../src/core/logger.js')).with({
-            Logger: class {
-                info = loggerInfoStub;
-                error = loggerErrorStub;
-                debug = loggerDebugStub;
-                warn = sandbox.stub(); // Add other methods if used by Auth class
-                getLogLevel = sandbox.stub().returns('info');
-                setLogLevel = sandbox.stub();
-            } as any
-        });
+        // rewiremock(() => import('../../src/core/logger.js')).with({
+            // Logger: class {
+            //     info = loggerInfoStub;
+            //     error = loggerErrorStub;
+            //     debug = loggerDebugStub;
+            //     warn = sandbox.stub(); // Add other methods if used by Auth class
+            //     getLogLevel = sandbox.stub().returns('info');
+            //     setLogLevel = sandbox.stub();
+            // } as any
+        // });
 
         // Configure mocks for jsforce Connection
         connStub = {
@@ -68,43 +68,43 @@ describe('getSalesforceConnection', () => {
         } as unknown as sinon.SinonStubbedInstance<Connection>;
 
         jsforceConnectionStub = sandbox.stub().returns(connStub);
-        rewiremock(() => import('jsforce')).with({
-            Connection: jsforceConnectionStub,
-        } as any);
+        // rewiremock(() => import('jsforce')).with({
+            // Connection: jsforceConnectionStub,
+        // } as any);
 
         // Configure mocks for fs/promises
         fsReadFileStub = sandbox.stub();
-        rewiremock(() => import('fs/promises')).with({
-            readFile: fsReadFileStub
-        });
+        // rewiremock(() => import('fs/promises')).with({
+            // readFile: fsReadFileStub
+        // });
 
         // Configure mocks for os
         osHomedirStub = sandbox.stub();
-        rewiremock(() => import('os')).with({
-            homedir: osHomedirStub
-        });
+        // rewiremock(() => import('os')).with({
+            // homedir: osHomedirStub
+        // });
 
         // Configure mocks for path
-        rewiremock(() => import('path')).with({
-            join: path.join // Usar directamente path.join
-        });
+        // rewiremock(() => import('path')).with({
+            // join: path.join // Usar directamente path.join
+        // });
 
         // Dynamically import the module under test AFTER mocks are configured
-        const tempAuthModule = await rewiremock.module(() => import('../../src/core/auth.js'));
-        authModule = tempAuthModule;
+        const tempAuthModule = await import('../../src/core/auth.js');
+        // authModule = tempAuthModule;
         authInstance = new tempAuthModule.Auth();
-        loggerModule = await rewiremock.module(() => import('../../src/core/logger.js'));
-        jsforceModule = await rewiremock.module(() => import('jsforce'));
-        fsPromisesModule = await rewiremock.module(() => import('fs/promises'));
-        osModule = await rewiremock.module(() => import('os'));
-        pathModule = await rewiremock.module(() => import('path'));
+        // loggerModule = await rewiremock.module(() => import('../../src/core/logger.js'));
+        // jsforceModule = await rewiremock.module(() => import('jsforce'));
+        // fsPromisesModule = await rewiremock.module(() => import('fs/promises'));
+        // osModule = await rewiremock.module(() => import('os'));
+        pathModule = await import('path');
 
         osHomedirStub.returns('/home/user');
     });
 
     afterEach(() => {
         sandbox.restore();
-        rewiremock.disable();
+        // rewiremock.disable();
     });
 
     it('should successfully authenticate using SFDX alias if available', async () => {

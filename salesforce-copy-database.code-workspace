@@ -1,10 +1,10 @@
 {
 	"folders": [
 		{
-			"path": "."
+			"path": ".localdevserver/ia-private"
 		},
 		{
-			"path": ".localdevserver/ia-private"
+			"path": "."
 		}
 	],
 	"settings": {}

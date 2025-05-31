@@ -1,0 +1,30 @@
+{
+  "summary": "Genera una representación visual del esquema de Salesforce.",
+  "description": "Este comando permite visualizar las relaciones entre SObjects de Salesforce en formato Mermaid o arte UTF-8.",
+  "examples": [
+    "sf schema:visualize --target-org myOrg --objects \"Account,Contact\"",
+    "sf schema:visualize -o myOrg -s \"Account,Opportunity\" -f utf8 -i -r schema.txt",
+    "sf schema:visualize -o myOrg --interactive"
+  ],
+  "flags": {
+    "target-org": {
+      "summary": "Alias o nombre de usuario de la organización de Salesforce."
+    },
+    "objects": {
+      "summary": "Lista de nombres de API de SObjects separados por comas."
+    },
+    "format": {
+      "summary": "Formato de salida para el diagrama (mermaid o utf8)."
+    },
+    "include-fields": {
+      "summary": "Incluye los campos de los objetos en el diagrama."
+    },
+    "output-file": {
+      "summary": "Ruta del archivo donde se guardará la salida."
+    },
+    "interactive": {
+      "summary": "Inicia el modo interactivo para configurar los parámetros."
+    }
+  },
+  "newline": "\n"
+}

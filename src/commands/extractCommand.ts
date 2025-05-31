@@ -1,15 +1,15 @@
 // src/commands/extractCommand.ts
 // src/commands/extractCommand.ts
 import { Auth } from '../core/auth.js'; // Importar la clase Auth
-import { loadConfig, getOrgDataDir, ensureDir } from '../core/fileManager.js';
+import { fileManagerAPI } from '../core/fileManager.js';
 import { Logger } from '../core/logger.js'; // Importar la clase Logger
-import { CommandOptions, DEFAULT_ORG_CONFIG, OrgAliasInfo } from '../core/typeDefs.js';
+// import { CommandOptions, DEFAULT_ORG_CONFIG, OrgAliasInfo } from '../core/typeDefs.js';
 import { extractDataBulk, extractDataQuery, executeSoslQuery, extractSObjectNameFromSoql } from '../core/sfdc-api.js'; // Importar executeSoslQuery y extractSObjectNameFromSoql
-import { writeRecordsToCsv } from '../core/fileManager.js'; // Importar writeRecordsToCsv
+// writeRecordsToCsv ahora se importa a través de fileManagerAPI
 import { AliasManagerService } from '../core/aliasManagerService.js';
 import ora from 'ora';
 import path from 'path';
-import { createWriteStream } from 'fs';
+// import { createWriteStream } from 'fs';
 
 const logger = new Logger('ExtractCommand');
 const auth = new Auth();
@@ -38,7 +38,7 @@ export async function extractData(params: ExtractDataParams) {
   const spinner = ora('Cargando configuración...').start();
 
   try {
-    let config = await loadConfig('./config.json'); // Cargar config.json por defecto
+    let config = await fileManagerAPI.loadConfig('./config.json'); // Cargar config.json por defecto
 
     let orgToUse: string | undefined = undefined;
 
@@ -84,12 +84,12 @@ export async function extractData(params: ExtractDataParams) {
     if (!outputPath) {
       if (soslQueryString) {
         // Para SOSL, crear un subdirectorio 'sosl' si no se especifica outputPath
-        const soslDir = path.join(getOrgDataDir(sourceAlias), 'sosl');
-        await ensureDir(soslDir); // Asegurar que el directorio 'sosl' exista
+        const soslDir = path.join(fileManagerAPI.getOrgDataDir(sourceAlias), 'sosl');
+        await fileManagerAPI.ensureDir(soslDir); // Asegurar que el directorio 'sosl' exista
         // Usar un nombre de archivo por defecto para SOSL si outputPath no se proporciona completo
         outputPath = path.join(soslDir, `sosl_results_${new Date().toISOString().replace(/[:.]/g, '-')}.csv`);
       } else {
-        outputPath = getOrgDataDir(sourceAlias); // Comportamiento por defecto para SOQL
+        outputPath = fileManagerAPI.getOrgDataDir(sourceAlias); // Comportamiento por defecto para SOQL
       }
     }
     // Si outputPath es solo un directorio para SOSL, añadir nombre de archivo
@@ -106,7 +106,7 @@ export async function extractData(params: ExtractDataParams) {
     const conn = await auth.getSalesforceConnection(sourceAlias, config); // Usar la instancia de Auth
     spinner.succeed(`Autenticado con ${conn.instanceUrl}`);
 
-    await ensureDir(path.dirname(outputPath)); // Asegurar el directorio del archivo de salida
+    await fileManagerAPI.ensureDir(path.dirname(outputPath!)); // Asegurar el directorio del archivo de salida
 
     if (soslQueryString) {
         spinner.start(`Ejecutando consulta SOSL y extrayendo datos...`);
@@ -114,7 +114,7 @@ export async function extractData(params: ExtractDataParams) {
         if (results.length === 0) {
             spinner.succeed('La consulta SOSL no devolvió resultados.');
         } else {
-            await writeRecordsToCsv(results, outputPath);
+            await fileManagerAPI.writeRecordsToCsv(results, outputPath!);
             spinner.succeed(`Extracción SOSL completada. ${results.length} registros guardados en ${outputPath}`);
         }
     } else if (soqlQuery) {
@@ -132,8 +132,8 @@ export async function extractData(params: ExtractDataParams) {
 
         if (useBulkApi) {
           // Para BULK, outputPath es un directorio, el nombre del archivo se deriva de mainObjectName
-          const bulkOutputFile = path.join(outputPath, `${mainObjectName}.csv`);
-          await ensureDir(path.dirname(bulkOutputFile)); // Asegurar que el directorio exista
+          const bulkOutputFile = path.join(outputPath!, `${mainObjectName}.csv`);
+          await fileManagerAPI.ensureDir(path.dirname(bulkOutputFile)); // Asegurar que el directorio exista
           const recordStream = await extractDataBulk(conn, soqlQuery, bulkOutputFile);
           
           let recordCount = 0;
@@ -149,7 +149,7 @@ export async function extractData(params: ExtractDataParams) {
           });
         } else { // apiType es 'rest', 'auto' o no especificado, se delega a extractDataQuery
           // extractDataQuery ahora maneja la detección de Tooling API internamente
-          const result = await extractDataQuery(conn, soqlQuery, outputPath, mainObjectName);
+          const result = await extractDataQuery(conn, soqlQuery, outputPath!, mainObjectName);
           spinner.succeed(`Extracción SOQL (REST/Tooling API) completada. Datos guardados en ${outputPath}. Archivo principal: ${result.parentFile}`);
         }
     }

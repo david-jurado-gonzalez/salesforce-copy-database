@@ -1,7 +1,7 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "module": "CommonJS",
+    "module": "NodeNext",
     "target": "ES2021",
     "outDir": "./dist-test",
     "types": ["mocha", "chai", "sinon", "sinon-chai", "node"]

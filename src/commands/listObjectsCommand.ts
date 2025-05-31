@@ -1,7 +1,7 @@
 import ora from 'ora';
 import { Connection, DescribeGlobalResult } from 'jsforce';
 import { Logger } from '../core/logger.js'; // Importar la clase Logger
-import { loadConfig } from '../core/fileManager.js';
+import { fileManagerAPI } from '../core/fileManager.js';
 import { Auth } from '../core/auth.js'; // Importar la clase Auth
 import { AppConfig } from '../core/typeDefs.js';
 
@@ -54,7 +54,7 @@ export async function listObjects(params: ListObjectsParams): Promise<string[]> 
   let conn: Connection;
 
   try {
-    config = await loadConfig('./config.json'); // Cargar config.json por defecto
+    config = await fileManagerAPI.loadConfig('./config.json'); // Cargar config.json por defecto
     spinner.succeed('Configuración cargada.');
     logger.debug('Configuración de usuario cargada:', config);
 

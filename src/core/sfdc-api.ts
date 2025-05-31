@@ -7,7 +7,7 @@ import { Readable } from 'stream';
 import { Logger } from './logger.js';
 
 const logger = new Logger('SfdcApi');
-import { writeRecordsToCsv } from './fileManager.js'; // Se necesitará esta función
+import { fileManagerAPI } from './fileManager.js'; // Se necesitará esta función
 
 // Caché para descripciones de SObject
 const sObjectDescribeCache = new Map<string, SObjectDescribe>();
@@ -492,13 +492,13 @@ export async function extractDataQuery(conn: Connection, soqlQuery: string, data
 
   // Escribir el archivo CSV del objeto padre
   const parentOutputFile = path.join(dataDir, `${mainObjectName}.csv`);
-  await writeRecordsToCsv(parentRecords, parentOutputFile);
+  await fileManagerAPI.writeRecordsToCsv(parentRecords, parentOutputFile);
   logger.info(`Registros de ${mainObjectName} guardados en ${parentOutputFile}`);
 
   // Escribir los archivos CSV de los objetos hijos
   for (const childObjectName in childRecordsMap) {
     const childOutputFile = path.join(dataDir, `${childObjectName}.csv`);
-    await writeRecordsToCsv(childRecordsMap[childObjectName], childOutputFile);
+    await fileManagerAPI.writeRecordsToCsv(childRecordsMap[childObjectName], childOutputFile);
     logger.info(`Registros de ${childObjectName} guardados en ${childOutputFile}`);
     childFiles.push(childOutputFile);
   }

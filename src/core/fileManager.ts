@@ -7,8 +7,8 @@ import { AppConfig, IdMap, OrgConfig, DEFAULT_ORG_CONFIG } from './typeDefs.js';
 import { Parser } from 'json2csv'; // Importar Parser de json2csv
 
 /**
- * Este módulo se encarga de toda la interacción con el sistema de ficheros. 
- * Está diseñado para ser robusto, seguro y para mantener una estructura de directorios consistente, 
+ * Este módulo se encarga de toda la interacción con el sistema de ficheros.
+ * Está diseñado para ser robusto, seguro y para mantener una estructura de directorios consistente,
  * tal y como hemos definido en la arquitectura. La gestión de errores y la claridad de las funciones son los puntos clave.
  */
 
@@ -23,7 +23,7 @@ const WORK_DIR_NAME = 'workdir';
  * Devuelve la ruta absoluta al directorio de trabajo principal (`./workdir`).
  * @returns La ruta completa al directorio de trabajo.
  */
-export function getWorkDir(): string {
+function getWorkDir(): string {
   return path.join(process.cwd(), WORK_DIR_NAME);
 }
 
@@ -32,7 +32,7 @@ export function getWorkDir(): string {
  * @param alias El alias de la organización.
  * @returns La ruta completa al directorio de la organización (ej: `./workdir/my-org`).
  */
-export function getOrgWorkDir(alias: string): string {
+function getOrgWorkDir(alias: string): string {
   return path.join(getWorkDir(), alias);
 }
 
@@ -41,7 +41,7 @@ export function getOrgWorkDir(alias: string): string {
  * @param alias El alias de la organización.
  * @returns La ruta al directorio de datos (ej: `./workdir/my-org/data`).
  */
-export function getOrgDataDir(alias: string): string {
+function getOrgDataDir(alias: string): string {
   return path.join(getOrgWorkDir(alias), 'data');
 }
 
@@ -50,7 +50,7 @@ export function getOrgDataDir(alias: string): string {
  * @param alias El alias de la organización.
  * @returns La ruta al directorio de metadatos (ej: `./workdir/my-org/metadata`).
  */
-export function getOrgMetadataDir(alias: string): string {
+function getOrgMetadataDir(alias: string): string {
   return path.join(getOrgWorkDir(alias), 'metadata');
 }
 
@@ -59,7 +59,7 @@ export function getOrgMetadataDir(alias: string): string {
  * @param alias El alias de la organización.
  * @returns La ruta al directorio de mapeos (ej: `./workdir/my-org/mappings`).
  */
-export function getOrgMappingsDir(alias: string): string {
+function getOrgMappingsDir(alias: string): string {
   return path.join(getOrgWorkDir(alias), 'mappings');
 }
 
@@ -68,7 +68,7 @@ export function getOrgMappingsDir(alias: string): string {
  * @param alias El alias de la organización.
  * @returns La ruta al directorio de errores (ej: `./workdir/my-org/errors`).
  */
-export function getOrgErrorsDir(alias: string): string {
+function getOrgErrorsDir(alias: string): string {
   return path.join(getOrgWorkDir(alias), 'errors');
 }
 
@@ -80,7 +80,7 @@ export function getOrgErrorsDir(alias: string): string {
  * @param dirPath La ruta del directorio a crear.
  * @throws Si ocurre un error durante la creación del directorio.
  */
-export async function ensureDir(dirPath: string): Promise<void> {
+async function ensureDir(dirPath: string): Promise<void> {
   try {
     // La opción { recursive: true } evita errores si el directorio ya existe
     // y crea directorios padres si es necesario.
@@ -116,7 +116,7 @@ function createDefaultOrgConfig(username?: string, password?: string, loginUrl?:
  * @param options Opciones adicionales de configuración desde CLI.
  * @returns El objeto de configuración parseado o por defecto.
  */
-export async function loadConfig(configPath?: string, options: {
+async function loadConfig(configPath?: string, options: {
   username?: string;
   password?: string;
   loginUrl?: string;
@@ -209,7 +209,7 @@ export async function loadConfig(configPath?: string, options: {
  * @returns Los datos parseados del fichero.
  * @throws Si el fichero no existe o no se puede parsear.
  */
-export async function readJsonFile<T>(filePath: string): Promise<T> {
+async function readJsonFile<T>(filePath: string): Promise<T> {
   const rawData = await fs.readFile(filePath, 'utf-8');
   return JSON.parse(rawData) as T;
 }
@@ -220,7 +220,7 @@ export async function readJsonFile<T>(filePath: string): Promise<T> {
  * @param filePath La ruta completa al fichero JSON.
  * @param data El objeto de datos a escribir.
  */
-export async function writeJsonFile(filePath: string, data: object): Promise<void> {
+async function writeJsonFile(filePath: string, data: object): Promise<void> {
     // `JSON.stringify` con `null, 2` indenta el JSON con 2 espacios, haciéndolo legible.
     const jsonData = JSON.stringify(data, null, 2);
     await fs.writeFile(filePath, jsonData, 'utf-8');
@@ -232,7 +232,7 @@ export async function writeJsonFile(filePath: string, data: object): Promise<voi
 * @param records Los registros a escribir.
 * @param filePath La ruta completa del archivo CSV de salida.
 */
-export async function writeRecordsToCsv(records: any[], filePath: string): Promise<void> {
+async function writeRecordsToCsv(records: any[], filePath: string): Promise<void> {
  if (records.length === 0) {
    logger.debug(`No hay registros para escribir en ${filePath}. Se omite la creación del archivo.`);
    return;
@@ -262,7 +262,7 @@ export async function writeRecordsToCsv(records: any[], filePath: string): Promi
 * @param objectName Nombre del SObject (ej: 'Account').
 * @returns El mapa de IDs (`{ sourceId: targetId }`) o un objeto vacío.
 */
-export async function readIdMap(orgAlias: string, objectName: string): Promise<IdMap> {
+async function readIdMap(orgAlias: string, objectName: string): Promise<IdMap> {
  const mapPath = path.join(getOrgMappingsDir(orgAlias), `${objectName}-map.json`);
  try {
    return await readJsonFile<IdMap>(mapPath);
@@ -284,7 +284,7 @@ export async function readIdMap(orgAlias: string, objectName: string): Promise<I
 * @param objectName Nombre del SObject.
 * @param map El mapa de IDs a guardar.
 */
-export async function writeIdMap(orgAlias: string, objectName: string, map: IdMap): Promise<void> {
+async function writeIdMap(orgAlias: string, objectName: string, map: IdMap): Promise<void> {
  const mapPath = path.join(getOrgMappingsDir(orgAlias), `${objectName}-map.json`);
  await writeJsonFile(mapPath, map);
  logger.debug(`Mapa de IDs para '${objectName}' guardado con ${Object.keys(map).length} entradas.`);
@@ -297,7 +297,7 @@ export async function writeIdMap(orgAlias: string, objectName: string, map: IdMa
 * @param errorType Un identificador para el log (ej: 'insert-errors', 'update-errors').
 * @param errors Un array de objetos de error para guardar.
 */
-export async function writeErrorLog(orgAlias: string, objectName: string, errorType: string, errors: any[]): Promise<void> {
+async function writeErrorLog(orgAlias: string, objectName: string, errorType: string, errors: any[]): Promise<void> {
  if (errors.length === 0) return;
  const errorPath = path.join(getOrgErrorsDir(orgAlias), `${objectName}-${errorType}.json`);
  await writeJsonFile(errorPath, errors);
@@ -310,14 +310,14 @@ export async function writeErrorLog(orgAlias: string, objectName: string, errorT
 * @param sourceAlias El alias de la organización de origen.
 * @returns Un array de strings con los nombres de los objetos.
 */
-export async function getObjectListFromDataDir(sourceAlias: string): Promise<string[]> {
+async function getObjectListFromDataDir(sourceAlias: string): Promise<string[]> {
    const dataDir = getOrgDataDir(sourceAlias);
    try {
        const allFiles = await fs.readdir(dataDir);
        const csvFiles = allFiles
            .filter(file => file.toLowerCase().endsWith('.csv'))
            .map(file => path.basename(file, '.csv')); // Quita la extensión .csv
-       
+
        logger.info(`Objetos detectados en el directorio de datos: ${csvFiles.join(', ')}`);
        return csvFiles;
    } catch (error) {
@@ -329,3 +329,21 @@ export async function getObjectListFromDataDir(sourceAlias: string): Promise<str
        throw error;
    }
 }
+
+export const fileManagerAPI = {
+  getWorkDir,
+  getOrgWorkDir,
+  getOrgDataDir,
+  getOrgMetadataDir,
+  getOrgMappingsDir,
+  getOrgErrorsDir,
+  ensureDir,
+  loadConfig,
+  readJsonFile,
+  writeJsonFile,
+  writeRecordsToCsv,
+  readIdMap,
+  writeIdMap,
+  writeErrorLog,
+  getObjectListFromDataDir
+};

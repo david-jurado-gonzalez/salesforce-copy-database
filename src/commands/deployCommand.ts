@@ -1,16 +1,6 @@
 import { AppConfig, IdMap, SObjectDescribe } from '../core/typeDefs.js';
 import { Auth } from '../core/auth.js'; // Importar la clase Auth
-import {
-  loadConfig,
-  getOrgDataDir,
-  getOrgMappingsDir,
-  getOrgErrorsDir,
-  ensureDir,
-  readIdMap,
-  writeIdMap,
-  writeErrorLog,
-  getObjectListFromDataDir,
-} from '../core/fileManager.js';
+import { fileManagerAPI } from '../core/fileManager.js';
 import { Logger } from '../core/logger.js'; // Importar la clase Logger
 import { describeSObject } from '../core/sfdc-api.js';
 import { DependencyGraph } from './dependencyGraph.js';
@@ -72,7 +62,7 @@ export async function deployData(params: DeployDataParams): Promise<void> {
       throw new Error("El alias de la organización de destino es obligatorio para el despliegue.");
     }
 
-    const config = await loadConfig('./config.json'); // Cargar config.json por defecto
+    const config = await fileManagerAPI.loadConfig('./config.json'); // Cargar config.json por defecto
     const { targetOrgAlias, inputPath, force } = params;
     const sourceAlias = config.defaultSourceOrgAlias || 'defaultSourceOrg'; // Asumir un alias de origen si no se especifica
 
@@ -93,8 +83,8 @@ export async function deployData(params: DeployDataParams): Promise<void> {
 
     // --- 3. Análisis de Dependencias ---
     spinner.start('Analizando dependencias de objetos...');
-    const dataDir = inputPath || getOrgDataDir(sourceAlias); // Usar inputPath si se proporciona
-    const objectsToDeploy = await getObjectListFromDataDir(dataDir);
+    const dataDir = inputPath || fileManagerAPI.getOrgDataDir(sourceAlias); // Usar inputPath si se proporciona
+    const objectsToDeploy = await fileManagerAPI.getObjectListFromDataDir(dataDir);
     const { deploymentOrder, twoPassObjects } = await runDependencyAnalysis(context, objectsToDeploy);
     spinner.succeed(`Orden de despliegue calculado: ${chalk.yellow(deploymentOrder.join(' -> '))}`);
     if (twoPassObjects.size > 0) {
@@ -162,8 +152,8 @@ async function confirmDeployment(targetAlias: string, force: boolean | undefined
  * @param targetAlias El alias de la organización de destino.
  */
 async function prepareWorkspace(targetAlias: string): Promise<void> {
-  await ensureDir(getOrgMappingsDir(targetAlias));
-  await ensureDir(getOrgErrorsDir(targetAlias));
+  await fileManagerAPI.ensureDir(fileManagerAPI.getOrgMappingsDir(targetAlias));
+  await fileManagerAPI.ensureDir(fileManagerAPI.getOrgErrorsDir(targetAlias));
 }
 
 /**
@@ -202,7 +192,7 @@ async function processInsertPass(context: DeploymentContext, objectName: string,
   const spinner = ora(`[FASE 1 - INSERT] Procesando ${objectName}...`).start();
   const { sourceAlias, targetAlias, targetConn } = context;
 
-  const dataPath = path.join(getOrgDataDir(sourceAlias), `${objectName}.csv`);
+  const dataPath = path.join(fileManagerAPI.getOrgDataDir(sourceAlias), `${objectName}.csv`);
   if (!fs.existsSync(dataPath)) {
     spinner.warn(`No se encontró el archivo ${objectName}.csv. Saltando...`);
     return { processed: 0, success: 0, errors: 0 };
@@ -212,7 +202,7 @@ async function processInsertPass(context: DeploymentContext, objectName: string,
   const parentObjects = deploymentOrder.slice(0, deploymentOrder.indexOf(objectName));
   const parentIdMaps: { [obj: string]: IdMap } = {};
   for (const parent of parentObjects) {
-    parentIdMaps[parent] = await readIdMap(targetAlias, parent);
+    parentIdMaps[parent] = await fileManagerAPI.readIdMap(targetAlias, parent);
   }
 
   const recordsToInsert: any[] = [];
@@ -242,7 +232,7 @@ async function processInsertPass(context: DeploymentContext, objectName: string,
   const jobResults = await targetConn.bulk.load(objectName, 'insert', recordsToInsert);
   
   // Procesamos los resultados para crear el mapa de IDs y el log de errores
-  const newIdMap = await readIdMap(targetAlias, objectName);
+  const newIdMap = await fileManagerAPI.readIdMap(targetAlias, objectName);
   const errors: any[] = [];
   
   jobResults.forEach((result, i) => {
@@ -256,9 +246,9 @@ async function processInsertPass(context: DeploymentContext, objectName: string,
     }
   });
 
-  await writeIdMap(targetAlias, objectName, newIdMap);
+  await fileManagerAPI.writeIdMap(targetAlias, objectName, newIdMap);
   if (errors.length > 0) {
-    await writeErrorLog(targetAlias, objectName, 'insert-errors', errors);
+    await fileManagerAPI.writeErrorLog(targetAlias, objectName, 'insert-errors', errors);
   }
 
   spinner.succeed(`[FASE 1 - INSERT] ${objectName}: ${jobResults.filter(r => r.success).length} creados, ${errors.length} fallidos.`);
@@ -307,7 +297,7 @@ async function processUpdatePass(context: DeploymentContext, objectName: string)
         .filter((name) => typeof name === 'string' && name);
     } else {
       logger.warn(`[${objectName}] currentConfig.objects no está definido o no es un array. Intentando listar mapas de IDs desde el directorio de mapeos.`);
-      const mappingDir = getOrgMappingsDir(targetAlias);
+      const mappingDir = fileManagerAPI.getOrgMappingsDir(targetAlias);
       if (fs.existsSync(mappingDir)) {
         deployedObjectNamesForIdMapLoading = fs.readdirSync(mappingDir)
           .filter(file => file.endsWith('.json'))
@@ -315,7 +305,7 @@ async function processUpdatePass(context: DeploymentContext, objectName: string)
       }
     }
     if (deployedObjectNamesForIdMapLoading.length === 0 && objectName) {
-        const currentObjectMap = await readIdMap(targetAlias, objectName).catch(() => null);
+        const currentObjectMap = await fileManagerAPI.readIdMap(targetAlias, objectName).catch(() => null);
         if (currentObjectMap) {
             allIdMaps[objectName] = currentObjectMap;
             logger.info(`[${objectName}] Mapa de IDs cargado para el objeto actual ${objectName} con ${Object.keys(currentObjectMap).length} entradas.`);
@@ -325,7 +315,7 @@ async function processUpdatePass(context: DeploymentContext, objectName: string)
     for (const mappedObjectName of deployedObjectNamesForIdMapLoading) {
       if (!mappedObjectName) continue;
       try {
-        const idMap = await readIdMap(targetAlias, mappedObjectName);
+        const idMap = await fileManagerAPI.readIdMap(targetAlias, mappedObjectName);
         if (idMap && Object.keys(idMap).length > 0) {
           allIdMaps[mappedObjectName] = idMap;
           logger.info(`[${objectName}] Mapa de IDs cargado para ${mappedObjectName} con ${Object.keys(idMap).length} entradas.`);
@@ -346,7 +336,7 @@ async function processUpdatePass(context: DeploymentContext, objectName: string)
   // 2. Leer Datos de Origen
   spinner.text = `[FASE 2 - UPDATE] [${objectName}] Leyendo datos CSV de origen...`;
   const sourceRecordsAccumulator: any[] = [];
-  const dataPath = path.join(getOrgDataDir(sourceAlias), `${objectName}.csv`);
+  const dataPath = path.join(fileManagerAPI.getOrgDataDir(sourceAlias), `${objectName}.csv`);
 
   if (!fs.existsSync(dataPath)) {
     logger.info(`[${objectName}] No se encontró el archivo de datos de origen ${objectName}.csv. Nada que procesar en la pasada de actualización.`);
@@ -385,7 +375,7 @@ async function processUpdatePass(context: DeploymentContext, objectName: string)
       error: `Missing SObject configuration or field definitions in config.json for ${objectName}.`
     }));
     if (errorRecordsForFile.length > 0) {
-      await writeErrorLog(targetAlias, objectName, 'update-config-error', errorRecordsForFile);
+      await fileManagerAPI.writeErrorLog(targetAlias, objectName, 'update-config-error', errorRecordsForFile);
     }
     return summary;
   }
@@ -505,7 +495,7 @@ async function processUpdatePass(context: DeploymentContext, objectName: string)
   // 5. Manejo de Errores (Registro en Archivo)
   if (errorRecordsForFile.length > 0) {
     try {
-      await writeErrorLog(targetAlias, objectName, 'update-errors', errorRecordsForFile);
+      await fileManagerAPI.writeErrorLog(targetAlias, objectName, 'update-errors', errorRecordsForFile);
       logger.info(`[${objectName}] Errores de actualización escritos para ${objectName}.`);
     } catch (e: any) {
       logger.error(`[${objectName}] Fallo al escribir el log de errores de actualización: ${e.message}`);

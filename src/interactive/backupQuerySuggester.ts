@@ -4,7 +4,7 @@
  */
 
 import { Connection } from 'jsforce';
-import { SObjectDescribe, ChildRelationship, Field } from '../core/typeDefs.js';
+import { SObjectDescribe, /*ChildRelationship, Field*/ } from '../core/typeDefs.js';
 import { listAllSObjects, describeSObject } from '../core/sfdc-api.js';
 import { Logger } from '../core/logger.js';
 

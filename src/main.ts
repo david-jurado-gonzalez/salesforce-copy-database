@@ -8,6 +8,7 @@ import { extractData } from './commands/extractCommand.js'; // Importar la funci
 import { deployData } from './commands/deployCommand.js';   // Importar la función refactorizada
 import { listObjects } from './commands/listObjectsCommand.js'; // Importar la función refactorizada
 import { backupData } from './commands/backupCommand.js'; // Importar la función para el comando backup
+import { restoreData } from './commands/restoreCommand.js'; // Importar la función para el comando restore
 import { Logger } from './core/logger.js'; // Importar la clase Logger
 import { InteractiveModeManager } from './interactive/InteractiveModeManager.js'; // Importar el gestor del modo interactivo
 import { AppConfig, DEFAULT_APP_CONFIG } from './core/typeDefs.js'; // Importar AppConfig y DEFAULT_APP_CONFIG
@@ -219,6 +220,45 @@ program
       logger.error(`Error en el comando de backup: ${error.message}`);
       process.exit(1);
     }
+program
+  .command('restore')
+  .description('Restaura datos en una organización de Salesforce desde un directorio de backup.')
+  .requiredOption('-t, --target-org <alias>', 'Alias de la organización Salesforce de destino')
+  .requiredOption('-p, --backup-path <path>', 'Ruta al directorio del backup que contiene backup-manifest.json')
+  .option('-s, --sobjects <list>', 'Lista de SObjects a restaurar, separados por comas (ej. "Account,Contact"). Por defecto, todos los del manifiesto.')
+  .addOption(new Option('--resolve-conflicts <mode>', 'Estrategia para manejar conflictos de datos (SKIP o OVERWRITE)').choices(['SKIP', 'OVERWRITE']).default('SKIP'))
+  .option('--max-api-usage <percentage>', 'Límite de uso de API de Salesforce (1-100), porcentaje del límite diario restante', '70')
+  .option('--dry-run', 'Ejecuta una simulación sin realizar cambios en la organización de destino', false)
+  .option('--no-dependency-check', 'Omite la comprobación de dependencias y restaura en el orden proporcionado o el del manifiesto', false)
+  .option('--external-id-field <field>', 'Nombre del campo de ID Externo a usar para operaciones de upsert (ej. MyExternalId__c)')
+  .action(async (options) => {
+    // Validar que al menos targetOrg y backupPath se proporcionen (commander ya lo hace con requiredOption)
+    // Validar maxApiUsage si se proporciona
+    if (options.maxApiUsage) {
+      const apiUsage = parseInt(options.maxApiUsage, 10);
+      if (isNaN(apiUsage) || apiUsage < 1 || apiUsage > 100) {
+        logger.error('Error: El valor de --max-api-usage debe ser un número entre 1 y 100.');
+        process.exit(1);
+      }
+    }
+
+    try {
+      await restoreData({
+        targetOrgAlias: options.targetOrg,
+        backupPath: options.backupPath,
+        sobjects: options.sobjects,
+        resolveConflicts: options.resolveConflicts,
+        maxApiUsage: options.maxApiUsage ? parseInt(options.maxApiUsage, 10) : undefined,
+        dryRun: options.dryRun,
+        noDependencyCheck: options.noDependencyCheck,
+        externalIdField: options.externalIdField,
+        interactive: false // El modo interactivo se maneja por separado
+      });
+    } catch (error: any) {
+      logger.error(`Error en el comando de restauración: ${error.message}`);
+      process.exit(1);
+    }
+  });
   });
 
 // Comando para iniciar el modo interactivo explícitamente

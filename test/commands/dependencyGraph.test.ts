@@ -368,7 +368,7 @@ describe('DependencyGraph', () => {
             // @ts-ignore
             graph.adj.get('Account').add('Contact'); // Manually add edge for cycle
 
-            const { order, cycles } = graph.topologicalSort();
+            const { order: _order, cycles } = graph.topologicalSort();
             expect(cycles).to.not.be.empty;
             expect(cycles).to.include('Account');
             expect(cycles).to.include('Contact');
