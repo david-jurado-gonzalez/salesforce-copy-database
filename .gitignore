@@ -181,3 +181,5 @@ dist
 .yarn/install-state.gz
 .pnp.*
 .localdevenv
+
+workdir
