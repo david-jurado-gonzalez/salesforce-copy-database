@@ -264,6 +264,7 @@ program
 // Comando para iniciar el modo interactivo explícitamente
 program
   .command('interactive')
+  .alias('i') // Añadir alias 'i'
   .description('Inicia la herramienta en modo interactivo.')
   .action(async () => { // Hacer la acción asíncrona
     const appConfig = await loadAppConfig(); // Cargar la configuración
