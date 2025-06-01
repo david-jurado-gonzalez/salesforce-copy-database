@@ -145,28 +145,74 @@ export async function generateSuggestedQueries(conn: Connection, prioritizedObje
     const suggestedQueries: SuggestedQuery[] = [];
 
     try {
-        const allSObjectNames = await listAllSObjects(conn);
-        const customObjectNames = allSObjectNames.filter(name => name.endsWith('__c'));
-        
-        const objectNamesToProcess: Set<string> = new Set();
-        prioritizedObjectNames.forEach(name => objectNamesToProcess.add(name));
-        customObjectNames.forEach(name => objectNamesToProcess.add(name));
+        const allSObjectNamesFromAPI = await listAllSObjects(conn);
 
-        // Filtrar para asegurar que los objetos a procesar realmente existen en la org
-        const existingObjectsToProcess = Array.from(objectNamesToProcess).filter(name => allSObjectNames.includes(name));
-        if (existingObjectsToProcess.length === 0 && allSObjectNames.length > 0) {
-            // Si no hay objetos priorizados o custom, o los priorizados no existen, tomar algunos estándar como fallback
-            const fallbackStandard = ['Account', 'Contact', 'Opportunity', 'Case', 'Lead'].filter(s => allSObjectNames.includes(s));
-            fallbackStandard.slice(0, 3).forEach(s => existingObjectsToProcess.push(s)); // Tomar hasta 3 como máximo
-             if (existingObjectsToProcess.length === 0 && allSObjectNames.length > 0) { // Si sigue vacío, tomar el primero que encuentre
-                existingObjectsToProcess.push(allSObjectNames[0]);
+        // 1.a. Crear nonNamespacedPool
+        const nonNamespacedPool = allSObjectNamesFromAPI.filter(name => name.split('__').length <= 2);
+
+        // 1.b. Opcional: namespacedObjectsFilteredOut
+        const namespacedObjectsFilteredOut = allSObjectNamesFromAPI.filter(name => !nonNamespacedPool.includes(name));
+
+        // 1.c. Registrar objetos con namespace excluidos
+        if (namespacedObjectsFilteredOut.length > 0) {
+            logger.info(`Se excluyen por defecto de las sugerencias los siguientes objetos con namespace: ${namespacedObjectsFilteredOut.join(', ')}`);
+        }
+
+        // 2. Modificar la derivación de customObjectNames
+        const customObjectNames = nonNamespacedPool.filter(name => name.endsWith('__c'));
+        
+        // 3. Ajustar la lógica para construir la lista final de objetos a procesar
+        let objectNamesToConsider: string[] = [];
+
+        // 3.b. Iterar sobre prioritizedObjectNames
+        prioritizedObjectNames.forEach(name => {
+            if (allSObjectNamesFromAPI.includes(name)) {
+                if (!objectNamesToConsider.includes(name)) {
+                    objectNamesToConsider.push(name);
+                }
+            } else {
+                logger.warn(`El objeto priorizado '${name}' no se encontró en la organización y será ignorado.`);
+            }
+        });
+
+        // 3.c. Iterar sobre customObjectNames
+        customObjectNames.forEach(name => {
+            if (!objectNamesToConsider.includes(name)) {
+                objectNamesToConsider.push(name);
+            }
+        });
+        
+        // 4. Ajustar la lógica de fallback
+        if (objectNamesToConsider.length === 0 && nonNamespacedPool.length > 0) {
+            // 4.a.i. Filtrar fallbackStandard contra nonNamespacedPool
+            const fallbackStandard = ['Account', 'Contact', 'Opportunity', 'Case', 'Lead']
+                .filter(s => nonNamespacedPool.includes(s));
+            
+            // 4.a.ii. Añadir objetos estándar de fallback
+            fallbackStandard.slice(0, 3).forEach(s => {
+                if (!objectNamesToConsider.includes(s)) {
+                    objectNamesToConsider.push(s);
+                }
+            });
+
+            // 4.a.iii. Si sigue vacía y nonNamespacedPool no está vacía, añadir el primero
+            if (objectNamesToConsider.length === 0 && nonNamespacedPool.length > 0) {
+                 if (!objectNamesToConsider.includes(nonNamespacedPool[0])) {
+                    objectNamesToConsider.push(nonNamespacedPool[0]);
+                }
             }
         }
 
+        // 5. Asegurar que la lista final de objetos (sin duplicados) se use para generar las consultas
+        const finalObjectNamesToProcess = [...new Set(objectNamesToConsider)]; // Eliminar duplicados por si acaso
 
-        logger.info(`Objetos a procesar para sugerencias: ${existingObjectsToProcess.join(', ')}`);
+        logger.info(`Objetos a procesar para sugerencias: ${finalObjectNamesToProcess.join(', ')}`);
 
-        for (const objectName of existingObjectsToProcess) {
+        if (finalObjectNamesToProcess.length === 0) {
+            logger.warn('No se encontraron objetos para procesar después de aplicar filtros y prioridades. No se generarán sugerencias.');
+        }
+
+        for (const objectName of finalObjectNamesToProcess) {
             try {
                 logger.info(`Analizando objeto: ${objectName}`);
                 const sObjectDescribe = await describeSObject(conn, objectName);

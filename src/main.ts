@@ -30,7 +30,7 @@ const initializeLogLevel = () => {
     }
   }
   
-  let finalLogLevel: string = 'INFO'; // Nivel por defecto cambiado a INFO
+  let finalLogLevel: string = 'WARN'; // Nivel por defecto cambiado a WARN para coincidir con README
 
   if (logLevelFromCli) {
     finalLogLevel = logLevelFromCli;
