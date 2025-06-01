@@ -1,0 +1,39 @@
+{
+  "summary": "Compara las estructuras de metadatos de SObjects entre dos entornos Salesforce (org o snapshot local).",
+  "description": "Permite identificar diferencias en SObjects, campos, relaciones, tipos de registro, etc., entre dos fuentes de metadatos. Las fuentes pueden ser organizaciones Salesforce activas (usando alias) o snapshots locales versionados.",
+  "examples": [
+    "Compara la 'orgProduccion' con 'orgDesarrollo' y muestra en consola:\n  <%= config.bin %> <%= command.id %> --source1 orgProduccion --source2 orgDesarrollo",
+    "Compara 'miOrg' con un snapshot específico y guarda el resultado en Markdown:\n  <%= config.bin %> <%= command.id %> -1 miOrg -2 .sfdc-cdb/cache/00Dxxxxxxxxxxxx/20250520_103000/metadata.json -f md -o ./comparison_report.md",
+    "Compara dos snapshots locales y genera un informe HTML, forzando el refresco de caché para el primer origen si es una org:\n  <%= config.bin %> <%= command.id %> --source1 miOrgAlias@20250601_100000 --source2 ./path/to/another/snapshot/metadata.json --output-format html --output-file report.html --refresh-cache1",
+    "Compara 'orgOrigen' con 'orgDestino' ignorando la caché para ambas y mostrando detalles:\n  <%= config.bin %> <%= command.id %> -1 orgOrigen -2 orgDestino --no-cache1 --no-cache2 --detailed"
+  ],
+  "flags": {
+    "source1": {
+      "summary": "Alias de la organización Salesforce o ruta al archivo metadata.json del snapshot para el primer origen. Ej: miOrgAlias, miOrgAlias@YYYYMMDD_HHMMSS, ./path/to/snapshot/metadata.json"
+    },
+    "source2": {
+      "summary": "Alias de la organización Salesforce o ruta al archivo metadata.json del snapshot para el segundo origen. Ej: otraOrgAlias, ./path/to/other/snapshot/metadata.json"
+    },
+    "output-format": {
+      "summary": "Formato del informe de comparación. Opciones: console, md, json, html."
+    },
+    "output-file": {
+      "summary": "Ruta del archivo donde se guardará el informe. Si no se especifica, se usará la salida estándar para 'console' o un nombre por defecto para otros formatos."
+    },
+    "detailed": {
+      "summary": "Muestra todos los detalles en el informe, incluso en formato de consola."
+    },
+    "refresh-cache1": {
+      "summary": "Fuerza la creación de un nuevo snapshot para 'source1' si es un alias de organización, ignorando el TTL de la caché."
+    },
+    "refresh-cache2": {
+      "summary": "Fuerza la creación de un nuevo snapshot para 'source2' si es un alias de organización, ignorando el TTL de la caché."
+    },
+    "no-cache1": {
+      "summary": "Ignora la caché para 'source1' y obtiene los datos directamente de la organización para la comparación (sin guardar un nuevo snapshot persistente)."
+    },
+    "no-cache2": {
+      "summary": "Ignora la caché para 'source2' y obtiene los datos directamente de la organización para la comparación (sin guardar un nuevo snapshot persistente)."
+    }
+  }
+}

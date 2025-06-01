@@ -2,7 +2,7 @@ import { AppConfig, IdMap, SObjectDescribe } from '../core/typeDefs.js';
 import { Auth } from '../core/auth.js'; // Importar la clase Auth
 import { fileManagerAPI } from '../core/fileManager.js';
 import { Logger } from '../core/logger.js'; // Importar la clase Logger
-import { describeSObject } from '../core/sfdc-api.js';
+import { sfdcApi } from '../core/sfdc-api.js'; // Cambiado para importar sfdcApi
 import { DependencyGraph } from './dependencyGraph.js';
 import { Connection } from 'jsforce';
 import ora from 'ora';
@@ -164,7 +164,7 @@ async function prepareWorkspace(targetAlias: string): Promise<void> {
  */
 async function runDependencyAnalysis(context: DeploymentContext, objectsToDeploy: string[]) {
   const graph = new DependencyGraph();
-  const describePromises = objectsToDeploy.map(obj => describeSObject(context.sourceConn, obj));
+  const describePromises = objectsToDeploy.map(obj => sfdcApi.describeSObject(context.sourceConn, obj)); // Cambiado para usar sfdcApi.describeSObject
   const descriptions = await Promise.all(describePromises);
 
   descriptions.forEach((desc: SObjectDescribe) => graph.addNode(desc.name, desc));

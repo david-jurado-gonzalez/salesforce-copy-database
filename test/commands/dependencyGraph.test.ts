@@ -1,8 +1,3 @@
-// Logs temporales para diagnóstico
-console.log('URL actual:', import.meta.url);
-console.log('Ruta del archivo:', new URL('.', import.meta.url).pathname);
-console.log('Intentando importar desde:', new URL('../../src/commands/dependencyGraph.js', import.meta.url).pathname);
-
 import { expect, use } from 'chai';
 import * as sinon from 'sinon';
 import sinonChai from 'sinon-chai';
@@ -26,7 +21,7 @@ describe('DependencyGraph', () => {
         // These stubs are on testLoggerInstance. They will NOT capture logs from DependencyGraph's internal logger.
         loggerDebugStub = sandbox.stub(testLoggerInstance, 'debug');
         loggerWarnStub = sandbox.stub(testLoggerInstance, 'warn');
-        graph = new DependencyGraph(); // DependencyGraph constructor takes no arguments.
+        graph = new DependencyGraph(testLoggerInstance); // Pass the stubbed logger instance
     });
 
     afterEach(() => {
@@ -67,8 +62,14 @@ describe('DependencyGraph', () => {
                 fields: []
             };
             graph.addNode('Account', describe);
+            // loggerDebugStub should have been called once with "Nodo añadido"
+            expect(loggerDebugStub).to.have.been.calledWith('[Graph] Nodo añadido: Account');
+            
             graph.addNode('Account', describe); // Add again
-            expect(loggerDebugStub).to.have.been.calledOnce; // Should only be called once
+            
+            // Now loggerDebugStub should have been called a second time with "Nodo actualizado"
+            expect(loggerDebugStub).to.have.been.calledWith('[Graph] Nodo actualizado: Account');
+            expect(loggerDebugStub).to.have.been.calledTwice; // Total calls
         });
     });
 
@@ -372,7 +373,7 @@ describe('DependencyGraph', () => {
             expect(cycles).to.not.be.empty;
             expect(cycles).to.include('Account');
             expect(cycles).to.include('Contact');
-            expect(loggerWarnStub).to.have.been.calledWith(sinon.match(/Ciclo de dependencias detectado!/));
+            expect(loggerWarnStub).to.have.been.calledWith(sinon.match(/\[Graph\] ¡Ciclo de dependencias detectado! Objetos involucrados: Account, Contact|\[Graph\] ¡Ciclo de dependencias detectado! Objetos involucrados: Contact, Account/)); // Order in set can vary
         });
     });
 
@@ -535,15 +536,38 @@ describe('DependencyGraph', () => {
         });
 
         it('should identify objects with optional lookups to later objects for two-pass', () => {
-            // Order: User, Account, Contact, Opportunity
-            // Contact has optional lookup to Account (Account comes before Contact) - NO TWO-PASS
-            // Opportunity has optional lookup to Contact (Contact comes before Opportunity) - YES TWO-PASS
-            const deploymentOrder = ['User', 'Account', 'Contact', 'Opportunity'];
+            const campaignDescribe: SObjectDescribe = {
+                name: 'Campaign', label: 'Campaign', labelPlural: 'Campaigns', keyPrefix: '701',
+                feedEnabled: false, custom: false, queryable: true, retrieveable: true, fields: []
+            };
+            graph.addNode('Campaign', campaignDescribe);
+
+            const modifiedOpportunityDescribe: SObjectDescribe = {
+                ...opportunityDescribe, // Uses opportunityDescribe from the describe block's scope
+                fields: [
+                    ...opportunityDescribe.fields,
+                    {
+                        name: 'CampaignId__c', label: 'Campaign', type: 'reference',
+                        updateable: true, createable: true, nillable: true, queryable: true,
+                        relationshipName: 'Campaign', referenceTo: ['Campaign'], custom: true
+                    }
+                ]
+            };
+            graph.addNode('Opportunity', modifiedOpportunityDescribe); // Overwrite Opportunity node
+
+            // Rebuild edges for Opportunity to include the new Campaign dependency
+            const currentScope = new Set(graph.getNodeNames());
+            graph.buildEdges('Opportunity', currentScope);
+            
+            // Order: User, Account, Contact, Opportunity, Campaign
+            // Opportunity has optional lookup to Campaign (Campaign comes AFTER Opportunity) - YES TWO-PASS
+            const deploymentOrder = ['User', 'Account', 'Contact', 'Opportunity', 'Campaign'];
             const cycles = new Set<string>();
             const twoPass = graph.getTwoPassObjects(deploymentOrder, cycles);
-            expect(twoPass).to.not.include('Contact'); // Account is before Contact
-            expect(twoPass).to.include('Opportunity'); // Contact is before Opportunity
-            expect(loggerDebugStub).to.have.been.calledWith('[Graph] Opportunity marcado para 2 fases debido a lookup opcional a Contact.');
+            
+            expect(twoPass).to.not.include('Contact');
+            expect(twoPass).to.include('Opportunity'); // Opportunity needs 2-pass due to Campaign
+            expect(loggerDebugStub).to.have.been.calledWith(sinon.match(/\[Graph\] Opportunity marcado para 2 fases debido a lookup opcional a Campaign\./));
         });
 
         it('should not mark objects for two-pass if lookup is not nillable', () => {

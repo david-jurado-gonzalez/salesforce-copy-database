@@ -1,8 +1,6 @@
 import { SObjectDescribe } from '../core/typeDefs.js';
 import { Logger } from '../core/logger.js';
 
-const logger = new Logger('DependencyGraph');
-
 /**
  * Este módulo es una de las piezas más "inteligentes" de la herramienta. Su responsabilidad es 
  * analizar las relaciones entre los objetos y proporcionar un plan de ejecución lógico y seguro 
@@ -16,6 +14,8 @@ const logger = new Logger('DependencyGraph');
  * Por lo tanto, B debe ser procesado antes que A.
  */
 export class DependencyGraph {
+  private logger: Logger; // Nueva propiedad
+
   /**
    * Almacena los metadatos de cada objeto (nodo) en el grafo.
    * Clave: Nombre del SObject (ej: 'Account').
@@ -31,17 +31,32 @@ export class DependencyGraph {
    */
   private readonly adj: Map<string, Set<string>> = new Map();
 
+  constructor(loggerInstance?: Logger) {
+    this.logger = loggerInstance || new Logger('DependencyGraph');
+  }
+
   /**
    * Añade un nuevo objeto (nodo) al grafo.
    * @param objectName El nombre de API del SObject.
    * @param describe El resultado de la llamada `describe` para ese objeto.
    */
   public addNode(objectName: string, describe: SObjectDescribe): void {
-    if (!this.nodes.has(objectName)) {
-      this.nodes.set(objectName, describe);
-      this.adj.set(objectName, new Set());
-      logger.debug(`[Graph] Nodo añadido: ${objectName}`);
+    const isNewNode = !this.nodes.has(objectName);
+    this.nodes.set(objectName, describe); // Siempre establecer/actualizar la descripción
+    if (isNewNode) {
+        this.adj.set(objectName, new Set());
+        this.logger.debug(`[Graph] Nodo añadido: ${objectName}`);
+    } else {
+        this.logger.debug(`[Graph] Nodo actualizado: ${objectName}`);
+        // Nota: Si las dependencias cambian debido a la descripción actualizada,
+        // buildEdges podría necesitar ser llamado explícitamente por el consumidor.
+        // El caso de prueba 'should identify objects with optional lookups...'
+        // ya hace esto llamando a graph.buildEdges('Opportunity', currentScope);
     }
+  }
+
+  public getNodeNames(): string[] {
+    return Array.from(this.nodes.keys());
   }
 
   /**
@@ -52,6 +67,10 @@ export class DependencyGraph {
    * @param objectsInScope Un Set con todos los nombres de objetos que forman parte del despliegue.
    */
   public buildEdges(objectName: string, objectsInScope: Set<string>): void {
+    if (!objectsInScope.has(objectName)) {
+      this.logger.debug(`[Graph] Saltando buildEdges para ${objectName} porque no está en el scope.`);
+      return;
+    }
     const describe = this.nodes.get(objectName);
     if (!describe) return;
 
@@ -63,7 +82,7 @@ export class DependencyGraph {
           // Solo creamos la arista si el objeto relacionado está en nuestro lote de despliegue
           if (objectsInScope.has(relatedObjectName)) {
             this.adj.get(objectName)!.add(relatedObjectName);
-            logger.debug(`[Graph] Arista creada: ${objectName} -> ${relatedObjectName}`);
+            this.logger.debug(`[Graph] Arista creada: ${objectName} -> ${relatedObjectName}`);
           }
         }
       }
@@ -126,7 +145,7 @@ export class DependencyGraph {
     // Si el ordenamiento no incluye todos los nodos, es que hay un ciclo.
     if (order.length < objectNames.length) {
       const cycles = new Set(objectNames.filter(name => !order.includes(name)));
-      logger.warn(`[Graph] ¡Ciclo de dependencias detectado! Objetos involucrados: ${Array.from(cycles).join(', ')}`);
+      this.logger.warn(`[Graph] ¡Ciclo de dependencias detectado! Objetos involucrados: ${Array.from(cycles).join(', ')}`);
       return { order, cycles };
     }
     
@@ -166,9 +185,9 @@ export class DependencyGraph {
             if (relatedIndex !== undefined && relatedIndex > currentIndex) {
               // ...entonces el objeto actual necesita una segunda fase para rellenar este campo.
               twoPassObjects.add(objectName);
-              logger.debug(`[Graph] ${objectName} marcado para 2 fases debido a lookup opcional a ${relatedObjectName}.`);
+              this.logger.debug(`[Graph] ${objectName} marcado para 2 fases debido a lookup opcional a ${relatedObjectName}.`);
               // Salimos del bucle de campos, ya que con una sola razón es suficiente.
-              break; 
+              break;
             }
           }
         }

@@ -3,7 +3,7 @@ import * as sinon from 'sinon';
 import sinonChai from 'sinon-chai';
 import chaiAsPromised from 'chai-as-promised';
 import { Connection } from 'jsforce';
-import { describeSObject, listAllSObjects } from '../../src/core/sfdc-api.js';
+import { sfdcApi } from '../../src/core/sfdc-api.js';
 import { SObjectDescribe } from '../../src/core/typeDefs.js';
 
 use(sinonChai);
@@ -54,7 +54,7 @@ describe('SFDC API Functions', () => {
             };
             (connStub.sobject as sinon.SinonStub).withArgs(objectName).returns(sobjectStub);
 
-            const result = await describeSObject(connStub, objectName);
+            const result = await sfdcApi.describeSObject(connStub, objectName);
             expect(result).to.deep.equal(mockDescribe);
             expect(connStub.sobject).to.have.been.calledWith(objectName);
             expect(sobjectStub.describe).to.have.been.calledOnce;
@@ -69,7 +69,7 @@ describe('SFDC API Functions', () => {
             };
             (connStub.sobject as sinon.SinonStub).withArgs(objectName).returns(sobjectStub);
 
-            await expect(describeSObject(connStub, objectName)).to.be.rejectedWith(error);
+            await expect(sfdcApi.describeSObject(connStub, objectName)).to.be.rejectedWith(error);
             expect(connStub.sobject).to.have.been.calledWith(objectName);
             expect(sobjectStub.describe).to.have.been.calledOnce;
         });
@@ -87,7 +87,7 @@ describe('SFDC API Functions', () => {
             };
             (connStub.describeGlobal as sinon.SinonStub).resolves(mockDescribeGlobalResult);
 
-            const result = await listAllSObjects(connStub);
+            const result = await sfdcApi.listAllSObjects(connStub);
             expect(result).to.deep.equal(['Account', 'Contact', 'CustomObject__c']);
             expect(connStub.describeGlobal).to.have.been.calledOnce;
         });
@@ -101,7 +101,7 @@ describe('SFDC API Functions', () => {
             };
             (connStub.describeGlobal as sinon.SinonStub).resolves(mockDescribeGlobalResult);
 
-            const result = await listAllSObjects(connStub);
+            const result = await sfdcApi.listAllSObjects(connStub);
             expect(result).to.deep.equal([]);
             expect(connStub.describeGlobal).to.have.been.calledOnce;
         });
@@ -110,7 +110,7 @@ describe('SFDC API Functions', () => {
             const error = new Error('API_ERROR');
             (connStub.describeGlobal as sinon.SinonStub).rejects(error);
 
-            await expect(listAllSObjects(connStub)).to.be.rejectedWith(error);
+            await expect(sfdcApi.listAllSObjects(connStub)).to.be.rejectedWith(error);
             expect(connStub.describeGlobal).to.have.been.calledOnce;
         });
     });

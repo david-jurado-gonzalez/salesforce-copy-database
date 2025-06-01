@@ -1,7 +1,7 @@
 // src/core/sfdc-api.ts
 import { Connection } from 'jsforce';
 import { SObjectDescribe, ChildRelationship, Field } from './typeDefs.js'; // Importar ChildRelationship y Field
-import { createWriteStream } from 'fs';
+import * as fs from 'fs'; // Cambiado para importar todo el módulo fs
 import path from 'path';
 import { Readable } from 'stream';
 import { Logger } from './logger.js';
@@ -40,7 +40,7 @@ const TOOLING_API_SOBJECTS = new Set([
  * @param soqlQuery La consulta SOQL.
  * @returns El nombre del SObject o undefined si no se encuentra.
  */
-export function extractSObjectNameFromSoql(soqlQuery: string): string | undefined {
+function _extractSObjectNameFromSoql(soqlQuery: string): string | undefined {
   const fromClauseMatch = soqlQuery.match(/\bFROM\s+([a-zA-Z0-9_]+)/i);
   if (fromClauseMatch && fromClauseMatch[1]) {
     return fromClauseMatch[1];
@@ -55,14 +55,14 @@ export function extractSObjectNameFromSoql(soqlQuery: string): string | undefine
  * @param sObjectName El nombre de API del SObject.
  * @returns 'standard' o 'tooling'.
  */
-export async function determineApiForSObject(conn: Connection, sObjectName: string): Promise<'standard' | 'tooling'> {
+async function _determineApiForSObject(conn: Connection, sObjectName: string): Promise<'standard' | 'tooling'> {
   if (sObjectApiTypeCache.has(sObjectName)) {
     logger.debug(`DEBUG: Usando caché para el tipo de API de ${sObjectName}: ${sObjectApiTypeCache.get(sObjectName)}`);
     return sObjectApiTypeCache.get(sObjectName)!;
   }
 
   try {
-    const describe = await describeSObject(conn, sObjectName); // describeSObject ya tiene su propia caché
+    const describe = await sfdcApi.describeSObject(conn, sObjectName); // Corregido: sin guion bajo
     let apiType: 'standard' | 'tooling' = 'standard';
 
     // Indicador definitivo: URL de Tooling API en la descripción
@@ -91,14 +91,14 @@ export async function determineApiForSObject(conn: Connection, sObjectName: stri
  * @param conn Conexión de jsforce.
  * @param objectName El nombre de API del objeto.
  */
-export async function describeSObject(conn: Connection, objectName: string): Promise<SObjectDescribe> {
+async function _describeSObject(conn: Connection, objectName: string): Promise<SObjectDescribe> {
   logger.debug(`DEBUG: Describiendo SObject: ${objectName}`);
   if (sObjectDescribeCache.has(objectName)) {
     logger.debug(`DEBUG: Usando caché para la descripción de ${objectName}`);
     return sObjectDescribeCache.get(objectName)!;
   }
   try {
-    const describeFromJsforce = await conn.sobject(objectName).describe();
+    const describeFromJsforce = await conn.sobject(objectName).describe$();
 
     const transformedFields: Field[] = describeFromJsforce.fields.map(jsforceField => {
         const jsforceFieldAsAny = jsforceField as any;
@@ -153,7 +153,7 @@ export async function describeSObject(conn: Connection, objectName: string): Pro
  * @param describe La descripción del SObject.
  * @returns El nombre del campo identificador.
  */
-export function getSObjectDisplayField(describe: SObjectDescribe): string | undefined {
+function _getSObjectDisplayField(describe: SObjectDescribe): string | undefined {
   // Prioridad: Name, luego Username, luego CaseNumber
   if (describe.fields.some(f => f.name === 'Name' && f.type === 'string')) {
     return 'Name';
@@ -184,7 +184,7 @@ export function getSObjectDisplayField(describe: SObjectDescribe): string | unde
  * Obtiene una lista de todos los SObjects "consultables" de la organización.
  * @param conn Conexión de jsforce.
  */
-export async function listAllSObjects(conn: Connection): Promise<string[]> {
+async function _listAllSObjects(conn: Connection): Promise<string[]> {
     const describeGlobalResult = await conn.describeGlobal();
     return describeGlobalResult.sobjects
         .filter(sobj => sobj.queryable)
@@ -198,9 +198,15 @@ export async function listAllSObjects(conn: Connection): Promise<string[]> {
  * @param outputFile Ruta del archivo de salida CSV.
  * @returns Un stream de los registros.
  */
-export async function extractDataBulk(conn: Connection, soqlQuery: string, outputFile: string): Promise<Readable> {
+async function _extractDataBulk(
+  conn: Connection,
+  soqlQuery: string,
+  outputFile: string,
+  createWriteStreamFn: (path: fs.PathLike, options?: any) => fs.WriteStream = fs.createWriteStream
+): Promise<Readable> {
   const recordStream = (await conn.bulk.query(soqlQuery)).stream();
-  const fileWriteStream = createWriteStream(outputFile);
+  // Usar la función inyectada para crear el stream de escritura
+  const fileWriteStream = createWriteStreamFn(outputFile);
   recordStream.pipe(fileWriteStream);
   return recordStream;
 }
@@ -213,7 +219,7 @@ export async function extractDataBulk(conn: Connection, soqlQuery: string, outpu
  * @param dataDir Directorio donde se guardarán los archivos CSV.
  * @returns Un objeto con los nombres de los archivos generados.
  */
-export async function extractDataQuery(conn: Connection, soqlQuery: string, dataDir: string, mainObjectName: string): Promise<{ parentFile: string, childFiles: string[] }> {
+async function _extractDataQuery(conn: Connection, soqlQuery: string, dataDir: string, mainObjectName: string): Promise<{ parentFile: string, childFiles: string[] }> {
   logger.info(`Ejecutando consulta con Query API: ${soqlQuery}`);
   
   const allRelatedIdsToFetch = new Map<string, Set<string>>(); // Map<SObjectName, Set<Id>>
@@ -224,7 +230,7 @@ export async function extractDataQuery(conn: Connection, soqlQuery: string, data
       return sObjectMetadataMap.get(objectName)!;
     }
     logger.debug(`DEBUG: ensureMetadata - Describiendo SObject: ${objectName} ya que no está en sObjectMetadataMap.`);
-    const describe = await describeSObject(conn, objectName); // describeSObject tiene su propia caché interna
+    const describe = await sfdcApi.describeSObject(conn, objectName); // Corregido: sin guion bajo
     const referenceFields = describe.fields.filter(f => f.type === 'reference' && f.referenceTo && f.referenceTo.length > 0);
     const metadata = { describe, referenceFields };
     sObjectMetadataMap.set(objectName, metadata);
@@ -237,13 +243,13 @@ export async function extractDataQuery(conn: Connection, soqlQuery: string, data
   // const mainObjectDescribe = sObjectMetadataMap.get(mainObjectName)!.describe; // Se usará metadata.describe directamente
 
   // Extraer el nombre del SObject principal de la consulta
-  const mainObjectNameFromQuery = extractSObjectNameFromSoql(soqlQuery);
+  const mainObjectNameFromQuery = sfdcApi.extractSObjectNameFromSoql(soqlQuery); // Corregido: sin guion bajo
   if (!mainObjectNameFromQuery) {
     throw new Error('No se pudo extraer el nombre del SObject principal de la consulta SOQL.');
   }
 
   // Determinar qué API usar para el SObject principal
-  const apiTypeForMainObject = await determineApiForSObject(conn, mainObjectNameFromQuery);
+  const apiTypeForMainObject = await sfdcApi.determineApiForSObject(conn, mainObjectNameFromQuery); // Corregido: sin guion bajo
   logger.info(`Ejecutando consulta con ${apiTypeForMainObject.toUpperCase()} API para ${mainObjectNameFromQuery}: ${soqlQuery}`);
 
   let records;
@@ -269,7 +275,7 @@ export async function extractDataQuery(conn: Connection, soqlQuery: string, data
     }
     // Necesitamos la descripción para esto, la obtenemos de ensureMetadata para asegurar que se cachea correctamente
     const metadata = await ensureMetadata(objName);
-    const displayField = getSObjectDisplayField(metadata.describe);
+    const displayField = sfdcApi.getSObjectDisplayField(metadata.describe); // Corregido: sin guion bajo
     sObjectDisplayFieldCache.set(objName, displayField);
     return displayField;
   }
@@ -412,7 +418,7 @@ export async function extractDataQuery(conn: Connection, soqlQuery: string, data
 
         const query = `SELECT ${fieldsToQuery.join(',')} FROM ${objName} WHERE Id IN ('${batchIds.join("','")}')`;
         // Determinar qué API usar para el SObject relacionado
-        const apiTypeForRelatedObject = await determineApiForSObject(conn, objName);
+        const apiTypeForRelatedObject = await sfdcApi.determineApiForSObject(conn, objName); // Corregido: sin guion bajo
         logger.debug(`DEBUG: Consultando campos de visualización/únicos para ${objName} con ${apiTypeForRelatedObject.toUpperCase()} API: ${query}`);
         let displayRecords;
         try {
@@ -511,7 +517,7 @@ export async function extractDataQuery(conn: Connection, soqlQuery: string, data
  * @param soslQuery The SOSL query string.
  * @returns A promise that resolves to an array of search result records.
  */
-export async function executeSoslQuery(connection: Connection, soslQuery: string): Promise<any[]> { // El tipo de retorno podría ser más específico, ej. SearchResult o un tipo customizado
+async function _executeSoslQuery(connection: Connection, soslQuery: string): Promise<any[]> { // El tipo de retorno podría ser más específico, ej. SearchResult o un tipo customizado
     try {
         logger.info(`Executing SOSL query: ${soslQuery}`);
         const result = await connection.search(soslQuery);
@@ -526,3 +532,14 @@ export async function executeSoslQuery(connection: Connection, soslQuery: string
         throw new Error(`SOSL Query execution failed: ${error.message}`);
     }
 }
+
+export const sfdcApi = {
+  extractSObjectNameFromSoql: _extractSObjectNameFromSoql,
+  determineApiForSObject: _determineApiForSObject,
+  describeSObject: _describeSObject,
+  getSObjectDisplayField: _getSObjectDisplayField,
+  listAllSObjects: _listAllSObjects,
+  extractDataBulk: _extractDataBulk,
+  extractDataQuery: _extractDataQuery,
+  executeSoslQuery: _executeSoslQuery,
+};

@@ -4,8 +4,8 @@
  */
 
 import { Connection } from 'jsforce';
-import { SObjectDescribe, /*ChildRelationship, Field*/ } from '../core/typeDefs.js';
-import { listAllSObjects, describeSObject } from '../core/sfdc-api.js';
+import { SObjectDescribe, Field /*ChildRelationship, Field*/ } from '../core/typeDefs.js'; // Added Field for explicit typing
+import { sfdcApi } from '../core/sfdc-api.js'; // Updated import
 import { Logger } from '../core/logger.js';
 
 const logger = new Logger('BackupQuerySuggester');
@@ -33,7 +33,7 @@ function getInterestingFields(sObjectDescribe: SObjectDescribe): string[] {
     // Incluir campos de auditoría estándar
     STANDARD_AUDIT_FIELDS.forEach(field => fieldsToInclude.add(field));
 
-    sObjectDescribe.fields.forEach(field => {
+    sObjectDescribe.fields.forEach((field: Field) => { // Added type
         // Incluir campo Name si existe y es un string
         if (field.name.toLowerCase() === 'name' && field.type === 'string') {
             fieldsToInclude.add(field.name);
@@ -73,22 +73,22 @@ async function buildSOQLQuery(conn: Connection, sObjectDescribe: SObjectDescribe
         if (field.type === 'reference' && field.referenceTo && field.referenceTo.length > 0 && field.relationshipName) {
             const parentObjectName = field.referenceTo[0]; // Asumimos una sola referencia por simplicidad
             try {
-                const parentDescribe = await describeSObject(conn, parentObjectName);
+                const parentDescribe = await sfdcApi.describeSObject(conn, parentObjectName); // Updated call
                 let parentDisplayFieldName = 'Id'; // Por defecto, si no se encuentra 'Name' u otro
-                const nameField = parentDescribe.fields.find(f => f.name.toLowerCase() === 'name');
+                const nameField = parentDescribe.fields.find((f: Field) => f.name.toLowerCase() === 'name'); // Added type
                 if (nameField) {
                     parentDisplayFieldName = nameField.name;
                 } else {
                     // Si no hay 'Name', buscar 'Username', 'CaseNumber', etc. o primer string no ID
                     const commonDisplayFields = ['Username', 'CaseNumber'];
                     for (const dfName of commonDisplayFields) {
-                        if (parentDescribe.fields.some(f => f.name === dfName && f.type === 'string')) {
+                        if (parentDescribe.fields.some((f: Field) => f.name === dfName && f.type === 'string')) { // Added type
                             parentDisplayFieldName = dfName;
                             break;
                         }
                     }
                     if (parentDisplayFieldName === 'Id') { // Si sigue siendo Id, buscar primer string no Id
-                        const firstStringField = parentDescribe.fields.find(f => f.type === 'string' && f.name !== 'Id');
+                        const firstStringField = parentDescribe.fields.find((f: Field) => f.type === 'string' && f.name !== 'Id'); // Added type
                         if (firstStringField) parentDisplayFieldName = firstStringField.name;
                     }
                 }
@@ -109,7 +109,7 @@ async function buildSOQLQuery(conn: Connection, sObjectDescribe: SObjectDescribe
         for (const childRel of sObjectDescribe.childRelationships) {
             if (childRel.relationshipName && childRel.childSObject) {
                 try {
-                    const childDescribe = await describeSObject(conn, childRel.childSObject);
+                    const childDescribe = await sfdcApi.describeSObject(conn, childRel.childSObject); // Updated call
                     const childInterestingFields = getInterestingFields(childDescribe);
                     // Excluir el campo de relación al padre de los campos del hijo para evitar redundancia
                     const childFieldsForSubquery = childInterestingFields.filter(f => f !== childRel.field);
@@ -145,13 +145,13 @@ export async function generateSuggestedQueries(conn: Connection, prioritizedObje
     const suggestedQueries: SuggestedQuery[] = [];
 
     try {
-        const allSObjectNamesFromAPI = await listAllSObjects(conn);
+        const allSObjectNamesFromAPI = await sfdcApi.listAllSObjects(conn); // Updated call
 
         // 1.a. Crear nonNamespacedPool
-        const nonNamespacedPool = allSObjectNamesFromAPI.filter(name => name.split('__').length <= 2);
+        const nonNamespacedPool = allSObjectNamesFromAPI.filter((name: string) => name.split('__').length <= 2); // Added type
 
         // 1.b. Opcional: namespacedObjectsFilteredOut
-        const namespacedObjectsFilteredOut = allSObjectNamesFromAPI.filter(name => !nonNamespacedPool.includes(name));
+        const namespacedObjectsFilteredOut = allSObjectNamesFromAPI.filter((name: string) => !nonNamespacedPool.includes(name)); // Added type
 
         // 1.c. Registrar objetos con namespace excluidos
         if (namespacedObjectsFilteredOut.length > 0) {
@@ -159,13 +159,13 @@ export async function generateSuggestedQueries(conn: Connection, prioritizedObje
         }
 
         // 2. Modificar la derivación de customObjectNames
-        const customObjectNames = nonNamespacedPool.filter(name => name.endsWith('__c'));
+        const customObjectNames = nonNamespacedPool.filter((name: string) => name.endsWith('__c')); // Added type
         
         // 3. Ajustar la lógica para construir la lista final de objetos a procesar
         let objectNamesToConsider: string[] = [];
 
         // 3.b. Iterar sobre prioritizedObjectNames
-        prioritizedObjectNames.forEach(name => {
+        prioritizedObjectNames.forEach((name: string) => { // Added type
             if (allSObjectNamesFromAPI.includes(name)) {
                 if (!objectNamesToConsider.includes(name)) {
                     objectNamesToConsider.push(name);
@@ -176,7 +176,7 @@ export async function generateSuggestedQueries(conn: Connection, prioritizedObje
         });
 
         // 3.c. Iterar sobre customObjectNames
-        customObjectNames.forEach(name => {
+        customObjectNames.forEach((name: string) => { // Added type
             if (!objectNamesToConsider.includes(name)) {
                 objectNamesToConsider.push(name);
             }
@@ -186,10 +186,10 @@ export async function generateSuggestedQueries(conn: Connection, prioritizedObje
         if (objectNamesToConsider.length === 0 && nonNamespacedPool.length > 0) {
             // 4.a.i. Filtrar fallbackStandard contra nonNamespacedPool
             const fallbackStandard = ['Account', 'Contact', 'Opportunity', 'Case', 'Lead']
-                .filter(s => nonNamespacedPool.includes(s));
+                .filter((s: string) => nonNamespacedPool.includes(s)); // Added type
             
             // 4.a.ii. Añadir objetos estándar de fallback
-            fallbackStandard.slice(0, 3).forEach(s => {
+            fallbackStandard.slice(0, 3).forEach((s: string) => { // Added type
                 if (!objectNamesToConsider.includes(s)) {
                     objectNamesToConsider.push(s);
                 }
@@ -215,7 +215,7 @@ export async function generateSuggestedQueries(conn: Connection, prioritizedObje
         for (const objectName of finalObjectNamesToProcess) {
             try {
                 logger.info(`Analizando objeto: ${objectName}`);
-                const sObjectDescribe = await describeSObject(conn, objectName);
+                const sObjectDescribe = await sfdcApi.describeSObject(conn, objectName); // Updated call
 
                 if (!sObjectDescribe.queryable) {
                     logger.info(`Objeto ${objectName} no es consultable, omitiendo.`);

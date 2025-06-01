@@ -4,7 +4,7 @@ import { Auth } from '../core/auth.js'; // Importar la clase Auth
 import { fileManagerAPI } from '../core/fileManager.js';
 import { Logger } from '../core/logger.js'; // Importar la clase Logger
 // import { CommandOptions, DEFAULT_ORG_CONFIG, OrgAliasInfo } from '../core/typeDefs.js';
-import { extractDataBulk, extractDataQuery, executeSoslQuery, extractSObjectNameFromSoql } from '../core/sfdc-api.js'; // Importar executeSoslQuery y extractSObjectNameFromSoql
+import { sfdcApi } from '../core/sfdc-api.js'; // Updated import
 // writeRecordsToCsv ahora se importa a través de fileManagerAPI
 import { AliasManagerService } from '../core/aliasManagerService.js';
 import ora from 'ora';
@@ -106,11 +106,17 @@ export async function extractData(params: ExtractDataParams) {
     const conn = await auth.getSalesforceConnection(sourceAlias, config); // Usar la instancia de Auth
     spinner.succeed(`Autenticado con ${conn.instanceUrl}`);
 
-    await fileManagerAPI.ensureDir(path.dirname(outputPath!)); // Asegurar el directorio del archivo de salida
+    // Si outputPath es un directorio (común para SOQL por defecto), asegurar ese directorio.
+    // Si es una ruta de archivo completa (común para SOSL o SOQL con outputPath específico), asegurar su dirname.
+    // Esta lógica asume que si outputPath no tiene extensión, es un directorio.
+    // Una forma más robusta sería verificar si es un directorio existente, pero para el flujo de creación, esto es suficiente.
+    const dirToEnsure = path.extname(outputPath!) === '' ? outputPath! : path.dirname(outputPath!);
+    await fileManagerAPI.ensureDir(dirToEnsure);
+    logger.info(`Directorio asegurado: ${dirToEnsure}`);
 
     if (soslQueryString) {
         spinner.start(`Ejecutando consulta SOSL y extrayendo datos...`);
-        const results = await executeSoslQuery(conn, soslQueryString);
+        const results = await sfdcApi.executeSoslQuery(conn, soslQueryString); // Updated call
         if (results.length === 0) {
             spinner.succeed('La consulta SOSL no devolvió resultados.');
         } else {
@@ -149,7 +155,7 @@ export async function extractData(params: ExtractDataParams) {
             }
         }
     } else if (soqlQuery) {
-        const mainObjectName = extractSObjectNameFromSoql(soqlQuery);
+        const mainObjectName = sfdcApi.extractSObjectNameFromSoql(soqlQuery); // Updated call
 
         if (!mainObjectName) {
           throw new Error("No se pudo determinar el objeto principal de la consulta SOQL. Verifique la sintaxis de su consulta.");
@@ -165,22 +171,32 @@ export async function extractData(params: ExtractDataParams) {
           // Para BULK, outputPath es un directorio, el nombre del archivo se deriva de mainObjectName
           const bulkOutputFile = path.join(outputPath!, `${mainObjectName}.csv`);
           await fileManagerAPI.ensureDir(path.dirname(bulkOutputFile)); // Asegurar que el directorio exista
-          const recordStream = await extractDataBulk(conn, soqlQuery, bulkOutputFile);
-          
-          let recordCount = 0;
-          recordStream.on('data', (data: any) => {
-              recordCount++;
-              spinner.text = `Procesando registros de '${mainObjectName}'... (${recordCount} encontrados)`;
-          });
-          recordStream.on('end', () => {
-              spinner.succeed(`Extracción SOQL (Bulk) completada. ${recordCount} registros guardados en ${bulkOutputFile}`);
-          });
-          recordStream.on('error', (err: Error) => {
-              spinner.fail(`Error durante la extracción SOQL (Bulk): ${err.message}`);
+
+          await new Promise<void>(async (resolve, reject) => {
+            try {
+              const recordStream = await sfdcApi.extractDataBulk(conn, soqlQuery, bulkOutputFile); // Updated call
+              let recordCount = 0;
+              recordStream.on('data', (data: any) => {
+                  recordCount++;
+                  spinner.text = `Procesando registros de '${mainObjectName}'... (${recordCount} encontrados)`;
+              });
+              recordStream.on('end', () => {
+                  spinner.succeed(`Extracción SOQL (Bulk) completada. ${recordCount} registros guardados en ${bulkOutputFile}`);
+                  resolve();
+              });
+              recordStream.on('error', (err: Error) => {
+                  // Este spinner.fail es específico del error del stream
+                  spinner.fail(`Error durante la extracción SOQL (Bulk): ${err.message}`);
+                  reject(err); // Rechazar la promesa para que el error se propague al catch principal de extractData
+              });
+            } catch (initialError) { // Capturar errores de la configuración de extractDataBulk o errores síncronos
+                spinner.fail(`Error al iniciar la extracción SOQL (Bulk): ${(initialError as Error).message}`);
+                reject(initialError);
+            }
           });
         } else { // apiType es 'rest', 'auto' o no especificado, se delega a extractDataQuery
           // extractDataQuery ahora maneja la detección de Tooling API internamente
-          const result = await extractDataQuery(conn, soqlQuery, outputPath!, mainObjectName);
+          const result = await sfdcApi.extractDataQuery(conn, soqlQuery, outputPath!, mainObjectName); // Updated call
           spinner.succeed(`Extracción SOQL (REST/Tooling API) completada. Datos guardados en ${outputPath}. Archivo principal: ${result.parentFile}`);
         }
     }

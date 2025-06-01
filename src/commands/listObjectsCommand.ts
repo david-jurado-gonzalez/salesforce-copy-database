@@ -1,12 +1,12 @@
 import ora from 'ora';
-import { Connection as JsforceConnection, DescribeGlobalResult as JsforceDescribeGlobalResult } from 'jsforce';
+import { Connection as JsforceConnection, DescribeGlobalResult as JsforceDescribeGlobalResult } from 'jsforce'; // Removed DescribeGlobalSObjectResult
 import { Org } from '@salesforce/core';
 import { Logger } from '../core/logger.js';
 // import { fileManagerAPI } from '../core/fileManager.js'; // No se usa
 // import { Auth } from '../core/auth.js'; // No se usa
 import { SObjectDescribe as AppSObjectDescribe } from '../core/typeDefs.js'; // SObjectDescribe de typeDefs para la API, AppConfig no se usa
 import { CacheManager, CachedOrgMetadata, CachedSObjectDetail } from '../core/cacheManager.js';
-import { describeSObject as sfdcDescribeSObject } from '../core/sfdc-api.js'; // Para obtener descripciones detalladas
+import { sfdcApi } from '../core/sfdc-api.js'; // Updated import
 import pkg from '../../package.json' with { type: "json" };
 
 const logger = new Logger('ListObjectsCommand');
@@ -107,8 +107,8 @@ export async function listObjects(params: ListObjectsParams): Promise<string[]> 
       spinner.succeed('describeGlobal completado.');
 
       const sObjectsToDescribe = describeGlobalResult.sobjects
-        .filter(sobj => sobj.queryable && sobj.retrieveable) // Según el diseño, queremos todos los "consultables"
-        .map(sobj => sobj.name);
+        .filter(sobj => sobj.queryable && sobj.retrieveable) // Removed incorrect type annotation
+        .map(sobj => sobj.name); // Removed incorrect type annotation
 
       const sObjectDetailsToCache: { [sObjectApiName: string]: CachedSObjectDetail } = {};
       const describePromises: Promise<void>[] = [];
@@ -118,11 +118,11 @@ export async function listObjects(params: ListObjectsParams): Promise<string[]> 
 
       for (const sObjectName of sObjectsToDescribe) {
         describePromises.push(
-          sfdcDescribeSObject(conn, sObjectName).then(desc => {
-            sObjectDetailsToCache[sObjectName] = CacheManager.transformSObjectDescribeToCache(desc as AppSObjectDescribe);
+          sfdcApi.describeSObject(conn, sObjectName).then((desc: AppSObjectDescribe) => { // Updated call and added type
+            sObjectDetailsToCache[sObjectName] = CacheManager.transformSObjectDescribeToCache(desc); // Removed 'as AppSObjectDescribe'
             describedCount++;
             spinner.text = `Describiendo SObjects... (${describedCount}/${sObjectsToDescribe.length}) ${sObjectName}`;
-          }).catch(err => {
+          }).catch((err: Error) => { // Added type
             logger.warn(`Error al describir SObject ${sObjectName}: ${err.message}. Se omitirá de la caché.`);
           })
         );
@@ -156,7 +156,7 @@ export async function listObjects(params: ListObjectsParams): Promise<string[]> 
 
     if (sObjectNames.length > 0) {
       console.log('\nSObjects disponibles en la organización:');
-      sObjectNames.forEach(name => console.log(name));
+      sObjectNames.forEach((name: string) => console.log(name)); // Added type
     } else {
       console.log('No se encontraron SObjects consultables en la organización.');
     }
