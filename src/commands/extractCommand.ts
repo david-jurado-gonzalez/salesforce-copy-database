@@ -114,8 +114,39 @@ export async function extractData(params: ExtractDataParams) {
         if (results.length === 0) {
             spinner.succeed('La consulta SOSL no devolvió resultados.');
         } else {
-            await fileManagerAPI.writeRecordsToCsv(results, outputPath!);
-            spinner.succeed(`Extracción SOSL completada. ${results.length} registros guardados en ${outputPath}`);
+            // Agrupar resultados por SObject
+            const recordsBySObject: { [sObjectName: string]: any[] } = {};
+            for (const record of results) {
+                const sObjectName = record.attributes?.type;
+                if (sObjectName) {
+                    if (!recordsBySObject[sObjectName]) {
+                        recordsBySObject[sObjectName] = [];
+                    }
+                    // Eliminar el objeto attributes para que no se escriba en el CSV, ya que es metadatos de JSForce
+                    const recordToWrite = { ...record };
+                    delete recordToWrite.attributes;
+                    recordsBySObject[sObjectName].push(recordToWrite);
+                } else {
+                    logger.warn(`Registro SOSL omitido por no tener 'attributes.type': ${JSON.stringify(record)}`);
+                }
+            }
+
+            if (Object.keys(recordsBySObject).length === 0 && results.length > 0) {
+                spinner.warn('La consulta SOSL devolvió resultados, pero no se pudo determinar el SObject para ninguno de ellos. No se escribirán archivos.');
+            } else {
+                let totalRecordsWritten = 0;
+                const outputDir = outputPath ? path.dirname(outputPath) : fileManagerAPI.getOrgDataDir(sourceAlias);
+                await fileManagerAPI.ensureDir(outputDir); // Asegurar que el directorio de salida exista
+
+                for (const sObjectName in recordsBySObject) {
+                    const sObjectRecords = recordsBySObject[sObjectName];
+                    const sObjectOutputFile = path.join(outputDir, `${sObjectName}_sosl_results.csv`);
+                    await fileManagerAPI.writeRecordsToCsv(sObjectRecords, sObjectOutputFile);
+                    logger.info(`  - ${sObjectRecords.length} registros de '${sObjectName}' guardados en ${sObjectOutputFile}`);
+                    totalRecordsWritten += sObjectRecords.length;
+                }
+                spinner.succeed(`Extracción SOSL completada. ${totalRecordsWritten} registros guardados en ${Object.keys(recordsBySObject).length} archivo(s) en el directorio ${outputDir}`);
+            }
         }
     } else if (soqlQuery) {
         const mainObjectName = extractSObjectNameFromSoql(soqlQuery);

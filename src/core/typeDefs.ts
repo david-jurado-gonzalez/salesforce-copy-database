@@ -31,6 +31,7 @@ export interface CommandOptions {
   source: string;
   target?: string;
   query?: string;
+  sosl?: string; // Añadido para la consulta SOSL
   config?: string; // Ahora es opcional
   force?: boolean;
   username?: string; // Para CLI

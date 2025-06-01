@@ -2,11 +2,11 @@
   "name": "salesforce-data-copier",
   "version": "1.0.0",
   "description": "Herramienta para copiar datos entre organizaciones de Salesforce.",
-  "main": "dist/src/main.js",
+  "main": "dist/main.js",
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/src/main.js",
+    "start": "node dist/main.js",
     "dev": "node --loader ts-node/esm src/main.ts",
     "test": "mocha --loader=ts-node/esm --project tsconfig.test.json \"test/**/*.test.ts\" --experimental-specifier-resolution=node"
   },

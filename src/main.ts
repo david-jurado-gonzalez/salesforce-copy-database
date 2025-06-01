@@ -101,10 +101,11 @@ program
 
 program
   .command('extract')
-  .description('Extrae datos de una organización de origen usando una consulta SOQL.')
+  .description('Extrae datos de una organización de origen usando una consulta SOQL o SOSL.')
   .option('-u, --username <username>', 'Nombre de usuario o alias de la organización de origen (reemplaza a -s)') // -s ahora es -u
-  .option('-a, --target-alias <alias>', 'Alias específico de la organización de origen (tiene precedencia sobre -u si ambos se proporcionan)')
-  .requiredOption('-q, --query <soql>', 'La consulta SOQL para extraer los datos')
+  .option('-a, -T, --target-alias <alias>', 'Alias específico de la organización de origen (tiene precedencia sobre -u si ambos se proporcionan)')
+  .option('-q, --query <soql>', 'La consulta SOQL para extraer los datos')
+  .option('--sosl <soslQuery>', 'Permite especificar una consulta SOSL para la extracción de datos')
   .option('-o, --output <path>', 'Ruta del directorio de salida para los datos', './data')
   .option('--apiType <type>', 'Tipo de API a usar (auto, bulk, rest)', 'auto')
   .action(async (options) => {
@@ -113,11 +114,23 @@ program
       logger.error('Error: Debe proporcionar un alias de origen con -a (--target-alias) o un nombre de usuario/alias con -u (--username).');
       process.exit(1);
     }
+
+    // Validar que se proporcione query o sosl, pero no ambos
+    if (!options.query && !options.sosl) {
+      logger.error('Error: Debe proporcionar una consulta SOQL con --query o una consulta SOSL con --sosl.');
+      process.exit(1);
+    }
+    if (options.query && options.sosl) {
+      logger.error('Error: No puede especificar --query y --sosl simultáneamente. Elija una opción.');
+      process.exit(1);
+    }
+
     try {
       await extractData({
         username: options.username, // options.source ahora es options.username
         targetAlias: options.targetAlias,
         query: options.query,
+        soslQuery: options.sosl, // Corregido: usar soslQuery en lugar de sosl
         outputPath: options.output,
         apiType: options.apiType
       });

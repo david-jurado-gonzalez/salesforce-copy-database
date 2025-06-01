@@ -266,6 +266,31 @@ Despliega los datos extraídos localmente en una organización de destino.
   * `--target, -t`: El alias de la organización de destino donde se cargarán los datos.
   * `--force, -f`: (Opcional) Salta la pregunta de confirmación de seguridad. Úsalo con precaución.
 
+### `restore`
+
+Despliega datos previamente extraídos (desde un directorio local) hacia una organización de Salesforce de destino. Se encarga de recrear los registros y mantener las relaciones entre ellos.
+
+**Sintaxis completa:**
+```bash
+npm start -- restore --source-dir <alias_datos_locales> --target-org <alias_destino> [--config <ruta>] [--force]
+```
+
+**Descripción de sus opciones:**
+*   `--source-dir, -s <alias_datos_locales>`: (Requerido) Alias o nombre que identifica el directorio local que contiene los datos previamente extraídos con el comando `extract`. Por ejemplo, si los datos se extrajeron de `dev1`, este sería `dev1`, y la herramienta buscará los datos en `workdir/dev1/data/`.
+*   `--target-org, -t <alias_destino>`: (Requerido) El alias de la organización de Salesforce de destino donde se cargarán los datos.
+*   `--config, -c <ruta>`: (Opcional) Ruta al fichero de configuración JSON. Por defecto es `./config.json`.
+*   `--force, -f`: (Opcional) Salta la pregunta de confirmación de seguridad antes de modificar datos en la organización de destino. Úsalo con precaución.
+
+**Ejemplo de uso:**
+```bash
+# Desplegar datos desde workdir/dev1/data/ hacia la organización qa-sandbox
+npm start -- restore --source-dir dev1 --target-org qa-sandbox
+```
+```bash
+# Desplegar datos forzando la operación y usando un config específico
+npm start -- restore -s uat_backup -t new_dev_env -c ./conf/my_special_config.json -f
+```
+
 ### `list-objects`
 
 Muestra una lista de todos los objetos que se pueden consultar (`queryable`) en una organización.
@@ -439,6 +464,7 @@ node dist/src/main.js list-objects -t full-sandbox
 > Opportunity
 > MyCustomObject__c
 > ... (y muchos más)
+```
 
 -----
 
