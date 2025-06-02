@@ -183,3 +183,5 @@ dist
 .localdevenv
 
 workdir
+# Salesforce Copy Database cache
+.sfdc-cdb/cache/

@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import { expect, use } from 'chai';
 import * as sinon from 'sinon';
 import sinonChai from 'sinon-chai';
@@ -21,14 +22,32 @@ import { /*CommandOptions,*/ AppConfig } from '../../src/core/typeDefs.js';
 import { ExtractDataParams } from '../../src/commands/extractCommand.js'; // Import type from .ts, but use .js extension
 import { EventEmitter } from 'events';
 import * as sfdcApiModuleImport from '../../src/core/sfdc-api.js'; // Import for type, actual module loaded dynamically
+import { Logger } from '../../src/core/logger.js';
+
+// Mock Logger
+const mockLoggerInstance = {
+  info: jest.fn(),
+  warn: jest.fn(),
+  error: jest.fn(),
+  debug: jest.fn(),
+  setLogLevel: jest.fn(),
+  getLogLevel: jest.fn().mockReturnValue('info'),
+} as unknown as Logger;
+
+jest.mock('../../src/core/logger.js', () => {
+  return {
+    __esModule: true,
+    Logger: jest.fn().mockImplementation(() => {
+      return mockLoggerInstance;
+    })
+  };
+});
 
 use(sinonChai);
 use(chaiAsPromised);
 
 describe('extractCommand', () => {
     let sandbox: sinon.SinonSandbox;
-    // let loggerInfoStub: sinon.SinonStub;
-    // let loggerErrorStub: sinon.SinonStub;
     // let spinnerStartStub: sinon.SinonStub; // No longer directly used, access via mockSpinner.start
     let spinnerSucceedStub: sinon.SinonStub;
     let spinnerFailStub: sinon.SinonStub;
@@ -53,7 +72,6 @@ describe('extractCommand', () => {
 
     // These will be imported dynamically or proxied
     let extractCommandModule: typeof import('../../src/commands/extractCommand.js');
-    // let loggerModule: typeof import('../../src/core/logger.js');
     // let authModule: typeof import('../../src/core/auth.js');
     // let fileManagerModule: typeof import('../../src/core/fileManager.js');
     // let jsforceModule: any; // Changed to any
@@ -105,16 +123,6 @@ describe('extractCommand', () => {
             })
         });
         
-        // Configure mocks for logger
-        // loggerInfoStub = sandbox.stub();
-        // loggerErrorStub = sandbox.stub();
-        // rewiremock(() => import('../../src/core/logger.js')).with({
-        //     Logger: class {
-        //         info = loggerInfoStub;
-        //         error = loggerErrorStub;
-        //     } as any
-        // });
-
         // Configure mocks for ora
         const actualSpinnerTextSetter = sandbox.stub();
         const mockSpinner = {
@@ -201,7 +209,6 @@ describe('extractCommand', () => {
         
         pathModule = await import('path');
         
-        // loggerModule = await rewiremock.module(() => import('../../src/core/logger.js'));
         // authModule = await rewiremock.module(() => import('../../src/core/auth.js'));
         // fileManagerModule = await rewiremock.module(() => import('../../src/core/fileManager.js'));
         // jsforceModule = await rewiremock.module(() => import('jsforce'));

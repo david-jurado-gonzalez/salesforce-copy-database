@@ -8,7 +8,7 @@ import { SessionManager, SessionState } from './sessionState.js'; // Añadido .j
 import { Logger } from '../core/logger.js';
 import { Auth } from '../core/auth.js';
 import { Connection } from 'jsforce';
-import { executeSoslQuery } from '../core/sfdc-api.js'; // Importar executeSoslQuery
+import { sfdcApi } from '../core/sfdc-api.js'; // Importar sfdcApi
 import { fileManagerAPI } from '../core/fileManager.js'; // Importar fileManagerAPI
 import { extractData as coreExtractData } from '../commands/extractCommand.js';
 import { deployData } from '../commands/deployCommand.js';
@@ -593,7 +593,7 @@ export async function handleExecuteSOSLQuery(currentState: SessionState, appConf
         const connection = await auth.getSalesforceConnection(sourceOrg, appConfig);
         logger.info(`Ejecutando consulta SOSL en ${sourceOrg}: "${soslQueryString}"`);
         
-        const results = await executeSoslQuery(connection, soslQueryString);
+        const results = await sfdcApi.executeSoslQuery(connection, soslQueryString);
 
         if (results.length === 0) {
             logger.info('La consulta SOSL no devolvió resultados.');

@@ -11,7 +11,7 @@ import { fileManagerAPI } from '../core/fileManager.js';
 // writeErrorLog,
 // getObjectListFromDataDir, // Se necesitará adaptar para leer del backup-manifest.json
 import { Logger } from '../core/logger.js';
-import { describeSObject, /*listAllSObjects, determineApiForSObject*/ } from '../core/sfdc-api.js';
+import { sfdcApi } from '../core/sfdc-api.js';
 // import { DependencyGraph } from './dependencyGraph.js'; // Se usará el del backup
 import { Connection, /*DescribeSObjectResult*/ } from 'jsforce';
 import ora from 'ora';
@@ -233,7 +233,7 @@ export async function restoreData(params: RestoreDataParams): Promise<void> {
       let sObjectMetadata: SObjectDescribe; // Cambiado de DescribeSObjectResult a SObjectDescribe
       try {
         spinner.start(`[${objectName}] Obteniendo metadatos desde ${targetOrgAlias}...`);
-        sObjectMetadata = await describeSObject(context.targetConn, objectName);
+        sObjectMetadata = await sfdcApi.describeSObject(context.targetConn, objectName);
         spinner.succeed(`[${objectName}] Metadatos obtenidos.`);
       } catch (err) {
         logger.error(`[${objectName}] Error al obtener metadatos: ${(err as Error).message}`);

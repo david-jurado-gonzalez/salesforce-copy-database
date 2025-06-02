@@ -1,6 +1,6 @@
 import inquirer from 'inquirer';
 import { Connection } from 'jsforce';
-import { describeSObject, listAllSObjects } from '../core/sfdc-api.js'; // Asumiendo que estas funciones existen y están correctamente exportadas
+import { sfdcApi } from '../core/sfdc-api.js'; // Importar sfdcApi
 import { Logger } from '../core/logger.js';
 
 const logger = new Logger('QueryAssistant');
@@ -27,7 +27,7 @@ export async function buildSoqlQueryInteractive(connection: Connection): Promise
 
   try {
     // 1. Seleccionar SObject
-    const sObjectNames = await listAllSObjects(connection); // Asumiendo que listAllSObjects devuelve Promise<string[]>
+    const sObjectNames = await sfdcApi.listAllSObjects(connection); // Asumiendo que listAllSObjects devuelve Promise<string[]>
     // No es necesario mapear si sObjectNames ya es un string[]
     const { selectedSObject } = await inquirer.prompt([
       {
@@ -42,7 +42,7 @@ export async function buildSoqlQueryInteractive(connection: Connection): Promise
     logger.info(`SObject seleccionado: ${queryParts.fromObject}`);
 
     // 2. Seleccionar Campos
-    const sObjectDescribe = await describeSObject(connection, queryParts.fromObject);
+    const sObjectDescribe = await sfdcApi.describeSObject(connection, queryParts.fromObject);
     // Aseguramos que 'field' tenga un tipo, asumiendo que sObjectDescribe.fields es { name: string }[] u compatible
     const fieldNames = sObjectDescribe.fields.map((field: { name: string }) => field.name);
     const { selectedFields } = await inquirer.prompt([

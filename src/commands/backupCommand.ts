@@ -2,8 +2,8 @@
 import { Auth } from '../core/auth.js';
 import { fileManagerAPI } from '../core/fileManager.js'; // Removido getRelativePath
 import { Logger } from '../core/logger.js';
-import { /*extractDataBulk, extractDataQuery, extractSObjectNameFromSoql,*/ describeSObject } from '../core/sfdc-api.js'; // Removido SObjectDescribe y Field
-import { SObjectDescribe, Field as SObjectField } from '../core/typeDefs.js'; // Añadido import directo de tipos
+import { sfdcApi } from '../core/sfdc-api.js'; // Removido SObjectDescribe y Field
+import { SObjectDescribe, Field as SObjectField, ChildRelationship } from '../core/typeDefs.js'; // Añadido import directo de tipos y ChildRelationship
 // import { AliasManagerService } from '../core/aliasManagerService.js';
 import ora, { Ora } from 'ora';
 import path from 'path';
@@ -105,7 +105,7 @@ function getPrimaryNameFieldForSObject(sObjectName: string): string {
 }
 
 async function getFieldsToQuery(conn: Connection, sObjectName: string): Promise<{ soqlFields: string[], fieldMapForCsv: Record<string, string> }> {
-    const describe = await describeSObject(conn, sObjectName);
+    const describe = await sfdcApi.describeSObject(conn, sObjectName);
     const soqlFields: string[] = [];
     const fieldMapForCsv: Record<string, string> = {};
 
@@ -356,7 +356,7 @@ export async function backupData(params: BackupDataParams): Promise<string> {
       if (shouldProcessMetadata) {
         try {
           spinner.text = `[${sObjectName}] Extrayendo metadatos (describe)...`;
-          const describeResult = await describeSObject(conn, sObjectName);
+          const describeResult = await sfdcApi.describeSObject(conn, sObjectName);
           allSObjectDescribes.set(sObjectName, describeResult);
           
           const metadataOutput: any = { /* ... (igual que antes) ... */
@@ -376,7 +376,7 @@ export async function backupData(params: BackupDataParams): Promise<string> {
               referenceTo: f.referenceTo, relationshipName: f.relationshipName, cascadeDelete: f.cascadeDelete,
               restrictedDelete: f.restrictedDelete, writeRequiresMasterRead: f.writeRequiresMasterRead
             })),
-            childRelationships: describeResult.childRelationships?.map(cr => ({
+            childRelationships: describeResult.childRelationships?.map((cr: ChildRelationship) => ({
                 childSObject: cr.childSObject, deprecatedAndHidden: cr.deprecatedAndHidden, field: cr.field,
                 junctionIdListNames: cr.junctionIdListNames, junctionReferenceTo: cr.junctionReferenceTo,
                 relationshipName: cr.relationshipName, cascadeDelete: cr.cascadeDelete, restrictedDelete: cr.restrictedDelete,

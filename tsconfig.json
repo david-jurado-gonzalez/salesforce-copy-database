@@ -8,7 +8,8 @@
     "module": "NodeNext", // Cambiado a NodeNext
     "target": "ES2022", // Cambiado a ES2022
     "skipLibCheck": true, // Asegurarse de que esté en true
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "isolatedModules": true
   },
   "include": ["./src/**/*.ts"],
   "exclude": ["./node_modules/**"]

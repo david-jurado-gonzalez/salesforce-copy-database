@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import { expect, use } from 'chai';
 import * as sinon from 'sinon';
 import sinonChai from 'sinon-chai';
@@ -5,6 +6,26 @@ import chaiAsPromised from 'chai-as-promised';
 import { Connection } from 'jsforce';
 import { sfdcApi } from '../../src/core/sfdc-api.js';
 import { SObjectDescribe } from '../../src/core/typeDefs.js';
+import { Logger } from '../../src/core/logger.js';
+
+// Mock Logger
+const mockLoggerInstance = {
+  info: jest.fn(),
+  warn: jest.fn(),
+  error: jest.fn(),
+  debug: jest.fn(),
+  setLogLevel: jest.fn(),
+  getLogLevel: jest.fn().mockReturnValue('info'),
+} as unknown as Logger;
+
+jest.mock('../../src/core/logger.js', () => {
+  return {
+    __esModule: true,
+    Logger: jest.fn().mockImplementation(() => {
+      return mockLoggerInstance;
+    })
+  };
+});
 
 use(sinonChai);
 use(chaiAsPromised);

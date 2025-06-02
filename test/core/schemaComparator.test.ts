@@ -43,6 +43,7 @@ const createMockSObjectDetail = (
 ): CachedSObjectDetail => ({
   name,
   label,
+  labelPlural: label + 's', // Default pluralization for mock
   custom,
   fields,
   childRelationships,

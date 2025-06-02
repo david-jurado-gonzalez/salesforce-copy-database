@@ -92,7 +92,10 @@ export class SourceResolver {
     // Assume it's an org alias (to be fetched or retrieved from latest cache)
     this.logger.info(`Resolving '${sourceInput}' as an org alias.`);
     try {
-      const org = await Org.create({ aliasOrUsername: sourceInput });
+  const org = await Org.create({ aliasOrUsername: sourceInput });
+  // Pass the sourceInput as orgAlias to CacheManager
+// Removed duplicate cacheManager declaration with incorrect indentation from line 97
+      // Pass the sourceInput as orgAlias to CacheManager
       const cacheManager = new CacheManager({ org, toolVersion: this.toolVersion, logger: this.logger });
 
       if (noCache) {
