@@ -31,6 +31,11 @@ interface ObjectProcessingInfo {
     isFundamental: boolean;
 }
 
+interface QuerySuggestionOptions {
+    includeNamespacedObjectsInSubqueries?: boolean;
+    includeTechnicalFields?: boolean;
+}
+
 
 /**
  * Realiza una consulta de sondeo para un objeto, identifica campos con datos y lookups poblados.
@@ -129,14 +134,16 @@ async function getPopulatedFieldsAndLookups(
  * @param sObjectDescribe Descripción del SObject.
  * @returns Lista de nombres de campos.
  */
-function getInterestingFields(sObjectDescribe: SObjectDescribe): string[] {
+function getInterestingFields(sObjectDescribe: SObjectDescribe, options: QuerySuggestionOptions): string[] {
     const fieldsToInclude: Set<string> = new Set();
 
     // Incluir Id siempre
     fieldsToInclude.add('Id');
 
-    // Incluir campos de auditoría estándar
-    STANDARD_AUDIT_FIELDS.forEach(field => fieldsToInclude.add(field));
+    // REQUISITO 2: Excluir campos técnicos por defecto. Incluir solo si la opción está activada.
+    if (options.includeTechnicalFields) {
+        STANDARD_AUDIT_FIELDS.forEach(field => fieldsToInclude.add(field));
+    }
 
     sObjectDescribe.fields.forEach((field: Field) => { // Added type
         // Incluir campo Name si existe y es un string
@@ -176,17 +183,21 @@ async function buildSOQLQuery(
     conn: Connection,
     sObjectDescribe: SObjectDescribe,
     fieldsToSelectInitially: string[],
-    allProcessedObjectNames: ReadonlySet<string> // Usar ReadonlySet para indicar que no se modifica aquí
+    allProcessedObjectNames: ReadonlySet<string>, // Usar ReadonlySet para indicar que no se modifica aquí
+    options: QuerySuggestionOptions // Añadir parámetro de opciones
 ): Promise<string> {
     const selectFields = new Set<string>(fieldsToSelectInitially);
 
-    // Asegurar que Id y campos de auditoría estándar estén presentes
+    // Asegurar que Id esté presente
     selectFields.add('Id');
-    STANDARD_AUDIT_FIELDS.forEach(af => {
-        if (sObjectDescribe.fields.some(f => f.name === af)) {
-            selectFields.add(af);
-        }
-    });
+    // REQUISITO 2: Excluir campos técnicos por defecto. Incluir solo si la opción está activada.
+    if (options.includeTechnicalFields) {
+        STANDARD_AUDIT_FIELDS.forEach(af => {
+            if (sObjectDescribe.fields.some(f => f.name === af)) {
+                selectFields.add(af);
+            }
+        });
+    }
 
     // Asegurar que el campo Name (si existe y es string) esté presente
     const nameFieldOriginal = sObjectDescribe.fields.find(f => f.name.toLowerCase() === 'name' && f.type === 'string');
@@ -239,6 +250,16 @@ async function buildSOQLQuery(
         for (const childRel of sObjectDescribe.childRelationships) {
             if (!childRel.relationshipName || !childRel.childSObject || !childRel.field) continue;
 
+            // REQUISITO 1: Excluir objetos de namespaces en subconsultas por defecto.
+            // Un objeto con namespace típicamente tiene dos guiones bajos, ej., 'namespace__ObjectName__c'
+            // Verificamos si el objeto hijo es namespaced Y si la opción para incluirlos NO está activada.
+            const isNamespacedChildObject = childRel.childSObject.includes('__') && childRel.childSObject.split('__').length > 2;
+
+            if (isNamespacedChildObject && !options.includeNamespacedObjectsInSubqueries) {
+                logger.info(`Omitiendo subconsulta para ${sObjectDescribe.name}.${childRel.relationshipName} (objeto ${childRel.childSObject}) porque es un objeto con namespace y la inclusión no está activada.`);
+                continue;
+            }
+
             // REQUISITO 1: Evitar subconsulta si el objeto hijo ya se procesa como principal
             if (allProcessedObjectNames.has(childRel.childSObject)) {
                 logger.info(`Omitiendo subconsulta para ${sObjectDescribe.name}.${childRel.relationshipName} (objeto ${childRel.childSObject}) porque ${childRel.childSObject} se procesará como objeto principal.`);
@@ -259,7 +280,8 @@ async function buildSOQLQuery(
                 }
 
                 // Para subconsultas, usamos getInterestingFields. Un sondeo profundo aquí sería demasiado.
-                let childFieldsForSubquery = getInterestingFields(childDescribe);
+                // Pasar las opciones para que getInterestingFields pueda aplicar el filtro de campos técnicos.
+                let childFieldsForSubquery = getInterestingFields(childDescribe, options);
 
                 // Excluir el campo de relación al padre de los campos del hijo para evitar redundancia
                 // y también el campo Id si ya está (getInterestingFields lo añade)
@@ -310,7 +332,11 @@ async function buildSOQLQuery(
  * @param prioritizedObjectNames Lista opcional de nombres de SObject a priorizar.
  * @returns Una lista de objetos SuggestedQuery.
  */
-export async function generateSuggestedQueries(conn: Connection, prioritizedObjectNames: string[] = []): Promise<SuggestedQuery[]> {
+export async function generateSuggestedQueries(
+    conn: Connection,
+    prioritizedObjectNames: string[] = [],
+    options: QuerySuggestionOptions = {}
+): Promise<SuggestedQuery[]> {
     logger.info('Generando consultas de backup sugeridas (modo conservador)...');
     const suggestedQueries: SuggestedQuery[] = [];
     const objectsInfo = new Map<string, ObjectProcessingInfo>(); // Almacena información sobre cada objeto procesado
@@ -474,15 +500,18 @@ export async function generateSuggestedQueries(conn: Connection, prioritizedObje
                 } else {
                     // Fallback si no hay info de sondeo o no se encontraron campos usados (además de Id/auditoría)
                     logger.info(`No se determinaron campos específicos con datos para ${objectName} o faltó información de sondeo; usando getInterestingFields como fallback.`);
-                    fieldsForQuery = getInterestingFields(sObjectDescribe);
+                    fieldsForQuery = getInterestingFields(sObjectDescribe, options);
                 }
                 
                 // Asegurar que al menos Id y campos de auditoría estén, si no, no tiene sentido la query
                 const finalFieldsCheck = new Set(fieldsForQuery);
                 finalFieldsCheck.add('Id');
-                STANDARD_AUDIT_FIELDS.forEach(af => {
-                     if (sObjectDescribe.fields.some(f => f.name === af)) finalFieldsCheck.add(af);
-                });
+                // REQUISITO 2: Excluir campos técnicos por defecto. Incluir solo si la opción está activada.
+                if (options.includeTechnicalFields) {
+                   STANDARD_AUDIT_FIELDS.forEach(af => {
+                        if (sObjectDescribe.fields.some(f => f.name === af)) finalFieldsCheck.add(af);
+                   });
+                }
 
                 if (finalFieldsCheck.size === 0 || (finalFieldsCheck.size === 1 && finalFieldsCheck.has('Id') && !STANDARD_AUDIT_FIELDS.some(af => sObjectDescribe.fields.some(f => f.name === af)))) {
                      logger.info(`No se encontraron campos suficientes para generar una consulta útil para ${objectName} (solo Id o ninguno tras análisis), omitiendo.`);
@@ -490,11 +519,11 @@ export async function generateSuggestedQueries(conn: Connection, prioritizedObje
                 }
 
 
-                const query = await buildSOQLQuery(conn, sObjectDescribe, Array.from(finalFieldsCheck), finalObjectNamesToProcess);
+                const query = await buildSOQLQuery(conn, sObjectDescribe, Array.from(finalFieldsCheck), finalObjectNamesToProcess, options);
                 suggestedQueries.push({
                     objectName,
                     query,
-                    reason: `Modo conservador: Incluye campos con datos detectados, Id, auditoría, Name (si existe), campos de relaciones padre (para lookups poblados) y subconsultas (evitando redundancia con objetos principales) para ${objectName}.`
+                    reason: `Modo conservador: Incluye campos con datos detectados, Id, auditoría (configurable), Name (si existe), campos de relaciones padre (para lookups poblados) y subconsultas (evitando redundancia con objetos principales y objetos con namespace configurable) para ${objectName}.`
                 });
                 logger.info(`Query sugerida para ${objectName}: ${query}`);
 
