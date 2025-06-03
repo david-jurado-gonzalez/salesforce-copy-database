@@ -21,20 +21,19 @@ Migrar datos entre entornos de Salesforce (ej: de Producción a una Sandbox, o e
   * **Manejo de Subconsultas (Padre-Hijo):** Cuando se usan subconsultas, la herramienta "desenrolla" los datos JSON anidados de la Query API en archivos CSV separados para objetos padre e hijo. Para mantener la vinculación de la relación, se añade una columna artificial al CSV del objeto hijo con el patrón `NombreCampoRelacion` (ej. `AccountId`). Esta columna contiene el `Id` del registro padre de la organización de origen, siendo vital para el mapeo durante el despliegue.
   * **Despliegue en Dos Fases:** Maneja dependencias circulares o complejas mediante un proceso de dos fases. La **Fase 1 (`processInsertPass`)** realiza la inserción inicial de registros y genera mapas de IDs. La **Fase 2 (`processUpdatePass`)** utiliza estos mapas de IDs para resolver y actualizar las relaciones de búsqueda (lookups) que no pudieron ser establecidas durante la Fase 1, asegurando la integridad referencial. Esta fase también genera logs de errores específicos para las actualizaciones (ej. `<ObjectName>-update-errors.json`).
   * **Interfaz de Usuario Clara:** Ofrece feedback constante con indicadores de progreso, logs de colores y resúmenes de operación.
-  * **Seguro por Defecto:** Pide confirmación antes de ejecutar operaciones que modifiquen datos en un entorno de destino.
-  * **Modo Interactivo Guiado:** Una interfaz paso a paso para configurar y ejecutar operaciones. Incluye la gestión de consultas SOQL y una **generación asistida de consultas para backups mejorada**:
-    *   **Modo Conservador (por defecto):** Analiza datos reales para identificar campos y relaciones de búsqueda activamente utilizados, resultando en sugerencias de consulta más precisas y relevantes.
-    *   **Priorización Inteligente:** Da prioridad a un conjunto de objetos fundamentales de Salesforce (Account, Case, Contact, Opportunity, User, RecordType, Task, Event).
-    *   **Descubrimiento de Relaciones:** Incluye objetos relacionados en las sugerencias si sus campos de búsqueda correspondientes están poblados con datos en la organización de origen.
-    *   **Reducción de Redundancia:** Lógica optimizada para evitar sugerencias redundantes, como subconsultas para objetos que ya se planea consultar directamente.
-    Ideal para usuarios nuevos o para tareas complejas.
+  * **Modo Interactivo Guiado:** Una interfaz paso a paso para configurar y ejecutar operaciones, incluyendo la gestión de consultas SOQL y la generación asistida de consultas para backups. Ideal para usuarios nuevos o para tareas complejas.
   * **Listado Directo de Objetos:** Accede rápidamente a una lista de todos los SObjects disponibles en tu organización de origen a través del modo interactivo. Consulta la [Guía de Listar Objetos](.localdevserver/docs/user_guide/Modo_Interactivo_Listar_Objetos.md) para más detalles.
 *   **Gestión Centralizada de Alias de Organización:** Permite gestionar y visualizar los alias de Salesforce CLI directamente desde la herramienta, facilitando la selección de la organización activa para operaciones como la extracción de datos, tanto en modo CLI como interactivo.
 *   **Extracción de Datos Asistida (Modo Interactivo):** Configura y ejecuta extracciones de datos complejas, incluyendo la gestión de consultas SOQL y la selección de API, de forma guiada. Consulta la [Guía de Extraer Datos (Modo Interactivo)](projects/salesforce-copy-database/docs/user_guides/interactive_mode/extract_data.md) para más detalles.
   * **¡Nuevo! Asistente Interactivo de Consultas SOQL:** Dentro de la extracción de datos en modo interactivo, ahora puedes construir tus consultas SOQL paso a paso. El asistente te ayuda a seleccionar SObjects, campos (incluyendo campos de relaciones) y a definir condiciones `WHERE`, minimizando errores y facilitando la exploración de datos.
+  * **Sugerencia de Consultas para Backups (Modo Interactivo):** La funcionalidad de sugerencia de consultas para backups ha sido significativamente mejorada:
+      *   **Modo Conservador (por defecto):** Ahora, por defecto, el asistente opera en un "modo conservador". Analiza una muestra de datos reales en tu organización para identificar campos y relaciones de búsqueda que están activamente en uso. Esto genera sugerencias de consultas más precisas y relevantes, evitando campos vacíos o relaciones irrelevantes.
+      *   **Priorización de Objetos Fundamentales:** El asistente prioriza un conjunto central de objetos estándar de Salesforce (Account, Case, Contact, Opportunity, User, RecordType, Task y Event) para asegurar que las sugerencias iniciales sean las más útiles para la mayoría de los escenarios de backup.
+      *   **Descubrimiento Inteligente de Objetos Relacionados:** La herramienta ahora descubre e incluye automáticamente objetos relacionados en las sugerencias si sus campos de relación (lookups) están poblados con datos en la organización de origen. Esto asegura que los backups capturen la integridad de los datos a través de las relaciones.
+      *   **Reducción de Redundancia:** La lógica interna ha sido optimizada para reducir la redundancia en las consultas sugeridas, por ejemplo, evitando la generación de subconsultas para objetos que ya se van a consultar directamente. Esto resulta en consultas más eficientes y limpias.
   * **Soporte Automático de la API de Herramientas para Consultas SOQL:** La herramienta ahora detecta automáticamente cuando una consulta SOQL se dirige a un SObject que solo es accesible a través de la API de Herramientas (Tooling API) y cambia de forma transparente a esta API para ejecutar la consulta. Esto significa que no necesitas modificar tus consultas SOQL ni especificar el tipo de API; la funcionalidad `extract` y la opción interactiva "Extraer Datos" lo gestionarán automáticamente.
 
-* **Soporte para Consultas SOSL:** Permite ejecutar búsquedas SOSL (Salesforce Object Search Language) directamente a través del comando `extract` usando el parámetro `--sosl`. Ideal para buscar términos específicos a través de múltiples SObjects simultáneamente. Los resultados de cada SObject encontrado se guardan en archivos CSV separados.
+* **Soporte para Consultas SOSL:** Permite ejecutar búsquedas SOSL (Salesforce Object Search Language) directamente a través del comando `extract` usando el parámetro `--sosl`. Ideal para buscar términos específicos a través de múltiples SObjects simultáneamente. Los resultados para cada SObject encontrado se guardarán en archivos CSV separados.
 ## 🗂️ Gestión de Alias de Organización
 
 La herramienta ahora ofrece una gestión mejorada de los alias de organización de Salesforce, permitiendo una selección más sencilla y una visualización clara de las organizaciones disponibles. Esto simplifica las operaciones al asegurar que siempre se trabaje con el alias correcto.
@@ -241,7 +240,7 @@ Las siguientes opciones se pueden usar con cualquier comando:
     * **Por Defecto:** Si no se especifica ni por línea de comandos ni en el archivo de configuración, el nivel de log por defecto es `WARN`.
     * **Ejemplo:**
       ```bash
-      node dist/src/main.js extract -s dev1 -q "SELECT Id FROM Account" -l debug
+      node dist/src/main.js extract -s dev1 -q "SELECT Id FROM Account LIMIT 1" -l debug
       ```
 
 ### `extract`
