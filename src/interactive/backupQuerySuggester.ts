@@ -36,6 +36,8 @@ interface ObjectProcessingInfo {
 interface QuerySuggestionOptions {
     includeNamespacedObjectsInSubqueries?: boolean;
     includeTechnicalFields?: boolean;
+    includeNamespacedFields?: boolean; // Nuevo: para campos individuales
+    maxSubqueryRelationships?: number; // Nuevo: para limitar subconsultas
 }
 
 
@@ -50,16 +52,27 @@ interface QuerySuggestionOptions {
 async function getPopulatedFieldsAndLookups(
     conn: Connection,
     objectName: string,
-    sObjectDescribe: SObjectDescribe
+    sObjectDescribe: SObjectDescribe,
+    options: QuerySuggestionOptions // Añadir parámetro de opciones
 ): Promise<{ populatedDataFields: Set<string>, populatedLookupObjects: Set<string> }> {
     const populatedDataFields = new Set<string>();
     const populatedLookupObjects = new Set<string>();
     const fieldsToQuery = new Set<string>();
     fieldsToQuery.add('Id'); // Siempre incluir Id
 
+    // Helper para identificar campos con namespace
+    const isNamespacedField = (fieldName: string): boolean => {
+        const parts = fieldName.split('__');
+        return parts.length > 2 && parts[0].length > 0;
+    };
+
+    // REQUISITO 1: Excluir campos de paquetes gestionados por defecto.
+    // Solo incluir si no es namespaced O si la opción para incluir campos namespaced está activada.
+    // Esto aplica a campos de datos y lookups.
     sObjectDescribe.fields.forEach(field => {
         // Incluir campos de lookup para verificar si están poblados y qué referencian
-        if (field.type === 'reference' && field.referenceTo && field.referenceTo.length > 0 && field.queryable) {
+        if (field.type === 'reference' && field.referenceTo && field.referenceTo.length > 0 && field.queryable &&
+            (!isNamespacedField(field.name) || options.includeNamespacedFields)) {
             fieldsToQuery.add(field.name);
         }
         // Incluir otros campos consultables que no sean de tipos excluidos, auditoría o Id para el sondeo de datos
@@ -67,7 +80,8 @@ async function getPopulatedFieldsAndLookups(
             field.queryable &&
             !EXCLUDED_FIELD_TYPES_FOR_SELECT.includes(field.type) &&
             !STANDARD_AUDIT_FIELDS.includes(field.name) &&
-            field.name.toLowerCase() !== 'id' && // Ya añadido
+            field.name.toLowerCase() !== 'id' &&
+            (!isNamespacedField(field.name) || options.includeNamespacedFields) &&
             !field.name.toLowerCase().endsWith('__r') // No campos de relación directa aquí
         ) {
             fieldsToQuery.add(field.name);
@@ -147,7 +161,27 @@ function getInterestingFields(sObjectDescribe: SObjectDescribe, options: QuerySu
         STANDARD_AUDIT_FIELDS.forEach(field => fieldsToInclude.add(field));
     }
 
+    // Helper para identificar campos con namespace
+    const isNamespacedField = (fieldName: string): boolean => {
+        const parts = fieldName.split('__');
+        return parts.length > 2 && parts[0].length > 0;
+    };
+
+    // Incluir Id siempre
+    fieldsToInclude.add('Id');
+
+    // REQUISITO 2: Excluir campos técnicos por defecto. Incluir solo si la opción está activada.
+    if (options.includeTechnicalFields) {
+        STANDARD_AUDIT_FIELDS.forEach(field => fieldsToInclude.add(field));
+    }
+
     sObjectDescribe.fields.forEach((field: Field) => { // Added type
+        // REQUISITO 1: Excluir campos de paquetes gestionados por defecto.
+        if (isNamespacedField(field.name) && !options.includeNamespacedFields) {
+            logger.debug(`Omitiendo campo con namespace ${sObjectDescribe.name}.${field.name} porque la inclusión no está activada.`);
+            return; // Saltar este campo
+        }
+
         // Incluir campo Name si existe y es un string
         if (field.name.toLowerCase() === 'name' && field.type === 'string') {
             fieldsToInclude.add(field.name);
@@ -189,6 +223,12 @@ async function buildSOQLQuery(
     options: QuerySuggestionOptions // Añadir parámetro de opciones
 ): Promise<string> {
     const selectFields = new Set<string>(fieldsToSelectInitially);
+
+    // Helper para identificar campos con namespace
+    const isNamespacedField = (fieldName: string): boolean => {
+        const parts = fieldName.split('__');
+        return parts.length > 2 && parts[0].length > 0;
+    };
 
     // Asegurar que Id esté presente
     selectFields.add('Id');
@@ -237,7 +277,12 @@ async function buildSOQLQuery(
                 }
             }
             // Añadir el campo referenciado del padre (ej. Account.Name)
-            selectFields.add(`${field.relationshipName}.${parentDisplayFieldName}`);
+            // REQUISITO 1: Excluir campos de paquetes gestionados por defecto para campos padre.
+            if (isNamespacedField(parentDisplayFieldName) && !options.includeNamespacedFields) {
+                logger.debug(`Omitiendo campo padre con namespace ${parentObjectName}.${parentDisplayFieldName} porque la inclusión no está activada.`);
+            } else {
+                selectFields.add(`${field.relationshipName}.${parentDisplayFieldName}`);
+            }
             // Opcional: decidir si quitar el ID del lookup (field.name) si se añade el campo referenciado.
             // Por ahora, se mantiene para asegurar que el ID siempre esté si el campo de lookup fue seleccionado.
             // selectFields.delete(field.name);
@@ -249,25 +294,36 @@ async function buildSOQLQuery(
     // Construir subconsultas para relaciones hijo directas
     const subQueries: string[] = [];
     if (sObjectDescribe.childRelationships) {
-        for (const childRel of sObjectDescribe.childRelationships) {
-            if (!childRel.relationshipName || !childRel.childSObject || !childRel.field) continue;
+        // REQUISITO 2: Limitar el número de subconsultas para evitar el límite de 20 tipos de hijos SOQL.
+        // Filtrar y ordenar las relaciones hijo antes de limitar
+        let relevantChildRelationships = sObjectDescribe.childRelationships.filter(childRel => {
+            if (!childRel.relationshipName || !childRel.childSObject || !childRel.field) return false;
 
-            // REQUISITO 1: Excluir objetos de namespaces en subconsultas por defecto.
-            // Un objeto con namespace típicamente tiene dos guiones bajos, ej., 'namespace__ObjectName__c'
-            // Verificamos si el objeto hijo es namespaced Y si la opción para incluirlos NO está activada.
             const isNamespacedChildObject = childRel.childSObject.includes('__') && childRel.childSObject.split('__').length > 2;
-
             if (isNamespacedChildObject && !options.includeNamespacedObjectsInSubqueries) {
                 logger.info(`Omitiendo subconsulta para ${sObjectDescribe.name}.${childRel.relationshipName} (objeto ${childRel.childSObject}) porque es un objeto con namespace y la inclusión no está activada.`);
-                continue;
+                return false;
             }
 
-            // REQUISITO 1: Evitar subconsulta si el objeto hijo ya se procesa como principal
             if (allProcessedObjectNames.has(childRel.childSObject)) {
                 logger.info(`Omitiendo subconsulta para ${sObjectDescribe.name}.${childRel.relationshipName} (objeto ${childRel.childSObject}) porque ${childRel.childSObject} se procesará como objeto principal.`);
-                continue;
+                return false;
             }
+            return true;
+        });
 
+        // Ordenar alfabéticamente por relationshipName para una selección consistente
+        relevantChildRelationships.sort((a, b) => a.relationshipName!.localeCompare(b.relationshipName!));
+
+        // Aplicar el límite de subconsultas
+        const maxSubqueries = options.maxSubqueryRelationships !== undefined ? options.maxSubqueryRelationships : 20; // Default a 20
+        const limitedChildRelationships = relevantChildRelationships.slice(0, maxSubqueries);
+
+        if (relevantChildRelationships.length > maxSubqueries) {
+            logger.warn(`Se limitaron las subconsultas para ${sObjectDescribe.name} a ${maxSubqueries} relaciones hijo. Se omitieron ${relevantChildRelationships.length - maxSubqueries} relaciones.`);
+        }
+
+        for (const childRel of limitedChildRelationships) {
             try {
                 let childObjectNameToDescribe = childRel.childSObject;
                 // Corrección específica para la peculiaridad de metadatos de AccountContactRelations
@@ -282,7 +338,7 @@ async function buildSOQLQuery(
                 }
 
                 // Para subconsultas, usamos getInterestingFields. Un sondeo profundo aquí sería demasiado.
-                // Pasar las opciones para que getInterestingFields pueda aplicar el filtro de campos técnicos.
+                // Pasar las opciones para que getInterestingFields pueda aplicar el filtro de campos técnicos y namespaced.
                 let childFieldsForSubquery = getInterestingFields(childDescribe, options);
 
                 // Excluir el campo de relación al padre de los campos del hijo para evitar redundancia
@@ -294,7 +350,7 @@ async function buildSOQLQuery(
                     f.toLowerCase() !== baseChildRelationField.toLowerCase() &&
                     f.toLowerCase() !== 'id' // Id se añade por defecto por getInterestingFields, pero la subconsulta ya lo tiene implícito
                 );
-                
+
                 // Re-añadir Id explícitamente si no hay otros campos, o si se quiere ser explícito.
                 // Por ahora, si childFieldsForSubquery queda vacío, no se hace la subconsulta.
                 // Si solo queda 'Id', la subconsulta sería (SELECT Id FROM ...)
@@ -486,7 +542,7 @@ export async function generateSuggestedQueries(
                 finalObjectNamesToProcess.add(currentObjectName); // Marcar para query final si es consultable
                 objectInfo.processed = true; // Marcar como sondeado
 
-                const { populatedDataFields, populatedLookupObjects } = await getPopulatedFieldsAndLookups(conn, currentObjectName, sObjectDescribe);
+                const { populatedDataFields, populatedLookupObjects } = await getPopulatedFieldsAndLookups(conn, currentObjectName, sObjectDescribe, options);
 
                 objectInfo.usedFields.add('Id'); // Id siempre
                 STANDARD_AUDIT_FIELDS.forEach(af => { // Campos de auditoría siempre
@@ -496,7 +552,7 @@ export async function generateSuggestedQueries(
                 if (nameField) objectInfo.usedFields.add(nameField.name); // Name siempre si existe
 
                 populatedDataFields.forEach(f => objectInfo.usedFields.add(f));
-                logger.debug(`Campos con datos para ${currentObjectName} (después del sondeo): ${Array.from(objectInfo.usedFields).join(', ')}`);
+                logger.debug(`Campos con datos para ${currentObjectName} (después del sondeo y filtrado de namespaced): ${Array.from(objectInfo.usedFields).join(', ')}`);
 
                 for (const lookupObjName of populatedLookupObjects) {
                     if (nonNamespacedPool.has(lookupObjName)) {
@@ -541,7 +597,7 @@ export async function generateSuggestedQueries(
                 let fieldsForQuery: string[];
                 if (objectInfo && objectInfo.usedFields.size > 0) {
                     fieldsForQuery = Array.from(objectInfo.usedFields);
-                } else {
+                } else { // Fallback si no hay info de sondeo o no se encontraron campos usados (además de Id/auditoría)
                     // Fallback si no hay info de sondeo o no se encontraron campos usados (además de Id/auditoría)
                     logger.info(`No se determinaron campos específicos con datos para ${objectName} o faltó información de sondeo; usando getInterestingFields como fallback.`);
                     fieldsForQuery = getInterestingFields(sObjectDescribe, options);
@@ -553,14 +609,14 @@ export async function generateSuggestedQueries(
                 // REQUISITO 2: Excluir campos técnicos por defecto. Incluir solo si la opción está activada.
                 if (options.includeTechnicalFields) {
                    STANDARD_AUDIT_FIELDS.forEach(af => {
-                        if (sObjectDescribe.fields.some(f => f.name === af)) finalFieldsCheck.add(af);
+                         if (sObjectDescribe.fields.some(f => f.name === af)) finalFieldsCheck.add(af);
                    });
-                }
-
-                if (finalFieldsCheck.size === 0 || (finalFieldsCheck.size === 1 && finalFieldsCheck.has('Id') && !STANDARD_AUDIT_FIELDS.some(af => sObjectDescribe.fields.some(f => f.name === af)))) {
-                     logger.info(`No se encontraron campos suficientes para generar una consulta útil para ${objectName} (solo Id o ninguno tras análisis), omitiendo.`);
-                     continue;
-                }
+                } // End of REQUISITO 2 block
+ 
+                 if (finalFieldsCheck.size === 0 || (finalFieldsCheck.size === 1 && finalFieldsCheck.has('Id') && !STANDARD_AUDIT_FIELDS.some(af => sObjectDescribe.fields.some(f => f.name === af)))) {
+                      logger.info(`No se encontraron campos suficientes para generar una consulta útil para ${objectName} (solo Id o ninguno tras análisis), omitiendo.`);
+                      continue;
+                 }
 
 
                 const query = await buildSOQLQuery(conn, sObjectDescribe, Array.from(finalFieldsCheck), finalObjectNamesToProcess, options);
