@@ -1,9 +1,13 @@
 import inquirer from 'inquirer';
 import { Connection } from 'jsforce';
-import { sfdcApi } from '../core/sfdc-api.js'; // Importar sfdcApi
+import { sfdcApi } from '../core/sfdc-api.js';
 import { Logger } from '../core/logger.js';
+import { saveQueryHistory, loadQueryHistory } from '../core/queryFileManager.js'; // Importar funciones de queryFileManager
+import { AliasManagerService } from '../core/aliasManagerService.js'; // Importar la clase AliasManagerService
+import { generateSuggestedQueries } from './backupQuerySuggester.js'; // Importar la función de sugerencias
 
 const logger = new Logger('QueryAssistant');
+const aliasManagerService = new AliasManagerService(); // Instanciar AliasManagerService
 
 // Tipos básicos para la construcción de la consulta
 interface SoqlQueryParts {
@@ -24,6 +28,73 @@ export async function buildSoqlQueryInteractive(connection: Connection): Promise
     selectFields: [],
     fromObject: '',
   };
+
+  // Cargar y sugerir desde el historial y las consultas de respaldo
+  // Asegurar que la información del usuario esté disponible en la conexión
+  if (!connection.userInfo) {
+    await connection.identity();
+  }
+
+  const username = (connection.userInfo as any)?.username;
+  let orgAlias: string | undefined;
+
+  // Helper function to get alias from username
+  const getAliasFromUsername = async (uname: string): Promise<string | undefined> => {
+    try {
+      const aliases = await aliasManagerService.listOrgAliases();
+      const foundOrg = aliases.find(org => org.username === uname);
+      return foundOrg?.alias;
+    } catch (error) {
+      logger.error(`Error al obtener alias para el nombre de usuario ${uname}: ${(error as Error).message}`);
+      return undefined;
+    }
+  };
+
+  if (username) {
+    orgAlias = await getAliasFromUsername(username);
+  } else {
+    logger.warn('No se pudo obtener el nombre de usuario de la conexión.');
+  }
+
+  let historyQueries: string[] = [];
+  let backupQueries: string[] = [];
+
+  if (orgAlias) {
+    try {
+      historyQueries = await loadQueryHistory(orgAlias); // Usar loadQueryHistory directamente
+      logger.info(`Se cargaron ${historyQueries.length} consultas del historial para ${orgAlias}.`);
+    } catch (error) {
+      logger.warn(`Error al cargar el historial de consultas para ${orgAlias}: ${(error as Error).message}`);
+    }
+  }
+
+  try {
+    const suggestedBackupQueries = await generateSuggestedQueries(connection);
+    backupQueries = suggestedBackupQueries.map(q => q.query);
+    logger.info(`Se generaron ${backupQueries.length} consultas de respaldo sugeridas.`);
+  } catch (error) {
+    logger.warn(`Error al generar consultas de respaldo sugeridas: ${(error as Error).message}`);
+  }
+
+  const allSuggestions = [...new Set([...historyQueries, ...backupQueries])]; // Eliminar duplicados
+  if (allSuggestions.length > 0) {
+    const { useSuggestion } = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'useSuggestion',
+        message: '¿Desea usar una consulta existente o construir una nueva?',
+        choices: [
+          { name: 'Construir nueva consulta', value: 'new' },
+          ...allSuggestions.map(q => ({ name: `Historial/Sugerencia: ${q}`, value: q }))
+        ],
+      },
+    ]);
+
+    if (useSuggestion !== 'new') {
+      logger.info(`Usando consulta sugerida: ${useSuggestion}`);
+      return useSuggestion;
+    }
+  }
 
   try {
     // 1. Seleccionar SObject
@@ -169,11 +240,42 @@ export async function buildSoqlQueryInteractive(connection: Connection): Promise
     }
 
     logger.info(`Consulta SOQL construida: ${soql}`);
+
+    // Guardar la consulta en el historial
+    // Guardar la consulta en el historial
+    try {
+      // Asegurar que la información del usuario esté disponible en la conexión antes de guardar
+      if (!connection.userInfo) {
+        await connection.identity();
+      }
+      const currentUsername = (connection.userInfo as any)?.username;
+      if (currentUsername) {
+        const currentOrgAlias = await getAliasFromUsername(currentUsername); // Usar la función auxiliar
+        if (currentOrgAlias) {
+          // Cargar el historial existente, añadir la nueva consulta y guardar
+          const existingHistory = await loadQueryHistory(currentOrgAlias);
+          // Asegurarse de que la consulta no sea un duplicado reciente
+          if (existingHistory.length === 0 || existingHistory[0] !== soql) {
+            const updatedHistory = [soql, ...existingHistory].slice(0, 10); // Mantener las últimas 10 consultas
+            await saveQueryHistory(currentOrgAlias, updatedHistory);
+            logger.info(`Consulta guardada en el historial para el alias: ${currentOrgAlias}`);
+          } else {
+            logger.info('La consulta es un duplicado reciente, no se guardará en el historial.');
+          }
+        } else {
+          logger.warn('No se pudo obtener el alias de la organización actual para guardar el historial de consultas.');
+        }
+      } else {
+        logger.warn('No se pudo obtener el nombre de usuario de la conexión para guardar el historial de consultas.');
+      }
+    } catch (historyError) {
+      logger.error('Error al guardar la consulta en el historial:', historyError);
+    }
+
     return soql;
 
   } catch (error) {
     logger.error('Error durante la construcción interactiva de la consulta SOQL:', error);
-    // Podríamos querer lanzar un error más específico o devolver un valor indicativo de fallo
     throw new Error('No se pudo construir la consulta SOQL interactivamente.');
   }
 }
