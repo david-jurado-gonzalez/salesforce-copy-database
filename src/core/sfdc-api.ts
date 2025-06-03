@@ -271,6 +271,26 @@ async function _listAllSObjects(conn: Connection): Promise<string[]> {
 }
 
 /**
+ * Verifica si un SObject es consultable.
+ * @param sObjectName El nombre de API del SObject.
+ * @returns true si es consultable, false en caso contrario.
+ */
+function _isSObjectQueryable(sObjectName: string): boolean {
+    const describe = sObjectDescribeCache.get(sObjectName);
+    return describe ? describe.queryable : false;
+}
+
+/**
+ * Verifica si un SObject es accesible (retrieveable).
+ * @param sObjectName El nombre de API del SObject.
+ * @returns true si es accesible, false en caso contrario.
+ */
+function _isSObjectAccessible(sObjectName: string): boolean {
+    const describe = sObjectDescribeCache.get(sObjectName);
+    return describe ? describe.retrieveable : false;
+}
+
+/**
  * Extrae datos utilizando la Bulk API de Salesforce.
  * @param conn Conexión de jsforce.
  * @param soqlQuery La consulta SOQL a ejecutar.
@@ -618,6 +638,8 @@ export const sfdcApi = {
   describeSObject: _describeSObject,
   getSObjectDisplayField: _getSObjectDisplayField,
   listAllSObjects: _listAllSObjects,
+  isSObjectQueryable: _isSObjectQueryable, // Añadido
+  isSObjectAccessible: _isSObjectAccessible, // Añadido
   extractDataBulk: _extractDataBulk,
   extractDataQuery: _extractDataQuery,
   executeSoslQuery: _executeSoslQuery,

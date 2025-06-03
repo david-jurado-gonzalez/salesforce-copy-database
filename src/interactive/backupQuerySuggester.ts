@@ -4,11 +4,14 @@
  */
 
 import { Connection } from 'jsforce';
-import { SObjectDescribe, Field /*ChildRelationship, Field*/ } from '../core/typeDefs.js'; // Added Field for explicit typing
-import { sfdcApi } from '../core/sfdc-api.js'; // Updated import
+import { SObjectDescribe, Field, ChildRelationship } from '../core/typeDefs.js';
+import { sfdcApi } from '../core/sfdc-api.js';
 import { Logger } from '../core/logger.js';
 import { saveBackupQueries, loadBackupQueries } from '../core/queryFileManager.js';
 import prompts from 'prompts';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { readFileSync } from 'fs';
 
 const logger = new Logger('BackupQuerySuggester');
 
@@ -36,8 +39,76 @@ interface ObjectProcessingInfo {
 interface QuerySuggestionOptions {
     includeNamespacedObjectsInSubqueries?: boolean;
     includeTechnicalFields?: boolean;
-    includeNamespacedFields?: boolean; // Nuevo: para campos individuales
-    maxSubqueryRelationships?: number; // Nuevo: para limitar subconsultas
+    includeNamespacedFields?: boolean;
+    maxSubqueryRelationships?: number;
+    includeChildRelationshipsInBackupQueries?: boolean; // Nuevo: para consultar solo objetos "sueltos"
+}
+
+interface BackupQueryConfig {
+    objectPriorities?: {
+        [objectName: string]: {
+            includeRelationships?: string[];
+            excludeRelationships?: string[];
+            customOrder?: string[];
+        };
+    };
+    globalExclusions?: string[];
+    includeChildRelationshipsInBackupQueries?: boolean;
+}
+
+let backupQueryConfig: BackupQueryConfig | null = null;
+
+const DEFAULT_GLOBAL_EXCLUSIONS = [
+    'ActivityHistory', 'OpenActivities', 'ProcessInstance', 'FeedItem',
+    'ContentDocumentLink', 'NoteAndAttachment', 'CombinedAttachments',
+    'Shares', 'Histories', 'Feeds', 'Tags', 'EmailMessageRelations',
+    'AttachedContentDocuments', 'ContentDocumentLinks', 'ProcessSteps',
+    'ActivityHistories', 'OpenActivities', 'TaskRelations', 'EventRelations',
+    'FlowOrchestrationWorkItems', 'FlowOrchestrationWorkItemHistories',
+    'WorkPlans', 'WorkPlanTemplates', 'WorkSteps', 'WorkStepTemplates',
+    'ServiceAppointments', 'ServiceResources', 'ServiceTerritories',
+    'ServiceTerritoryMembers', 'Shift', 'ShiftEngagement', 'TimeSheet',
+    'TimeSheetEntry', 'WorkOrder', 'WorkOrderLineItem', 'AssetDowntime',
+    'AssetRelationship', 'CaseTeamMember', 'CaseTeamTemplate', 'CaseTeamTemplateMember',
+    'CaseTeamTemplateRecord', 'CollaborationGroup', 'CollaborationGroupMember',
+    'ContentVersion', 'ContentWorkspace', 'ContentWorkspaceMember',
+    'ContractLineItem', 'ContractStatusHistory', 'EntitlementContact',
+    'EntitlementTemplate', 'FeedComment', 'FeedTrackedChange', 'ForecastingItem',
+    'ForecastingType', 'Idea', 'IdeaComment', 'KnowledgeArticle', 'KnowledgeArticleVersion',
+    'LeadShare', 'OpportunityCompetitor', 'OpportunityContactRole', 'OpportunityHistory',
+    'OpportunityLineItem', 'OpportunityPartner', 'Order', 'OrderItem', 'Partner',
+    'Pricebook2', 'PricebookEntry', 'Product2', 'ProductConsumptionSchedule',
+    'ProductItem', 'ProductRequest', 'ProductRequestLineItem', 'ProductRequired',
+    'ProductTransfer', 'Quote', 'QuoteLineItem', 'RecordAction', 'RecordActionHistory',
+    'ResourceAbsence', 'ResourcePreference', 'ReturnOrder', 'ReturnOrderItem',
+    'ServiceCrew', 'ServiceCrewMember', 'ServiceReport', 'ServiceReportTemplate',
+    'ShiftPattern', 'ShiftPatternEntry', 'SkillRequirement', 'Solution', 'SolutionHistory',
+    'TaskWhoRelation', 'TaskWhatRelation', 'Territory', 'Territory2', 'Territory2Model',
+    'Territory2Rule', 'Territory2Type', 'UserTerritory', 'WorkType', 'WorkTypeGroup',
+    'WorkTypeGroupMember'
+];
+
+/**
+ * Carga la configuración de sugerencia de consultas de backup desde un archivo JSON.
+ * @returns La configuración cargada o un objeto vacío si no se encuentra o hay un error.
+ */
+function loadBackupQueryConfig(): BackupQueryConfig {
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const configPath = path.resolve(__dirname, '../../config/backupQueryConfig.json');
+    try {
+        const configContent = readFileSync(configPath, 'utf-8');
+        const config = JSON.parse(configContent);
+        logger.info(`Configuración de backup cargada desde ${configPath}`);
+        return config;
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+            logger.info(`Archivo de configuración no encontrado en ${configPath}. Usando configuración por defecto.`);
+        } else {
+            logger.warn(`Error al cargar la configuración de backup desde ${configPath}: ${(error as Error).message}. Usando configuración por defecto.`);
+        }
+        return {};
+    }
 }
 
 
@@ -293,27 +364,108 @@ async function buildSOQLQuery(
 
     // Construir subconsultas para relaciones hijo directas
     const subQueries: string[] = [];
-    if (sObjectDescribe.childRelationships) {
-        // REQUISITO 2: Limitar el número de subconsultas para evitar el límite de 20 tipos de hijos SOQL.
-        // Filtrar y ordenar las relaciones hijo antes de limitar
-        let relevantChildRelationships = sObjectDescribe.childRelationships.filter(childRel => {
+    // REQUISITO 3: Opción para consultar solo objetos "sueltos" (sin subconsultas)
+    if (options.includeChildRelationshipsInBackupQueries === false) {
+        logger.info(`La opción 'includeChildRelationshipsInBackupQueries' está desactivada. No se generarán subconsultas para ${sObjectDescribe.name}.`);
+        // Continuar para construir la consulta principal sin subconsultas
+    } else if (sObjectDescribe.childRelationships) {
+        // REQUISITO 2: Implementar la priorización de objetos relacionados para subconsultas.
+        let relevantChildRelationships: ChildRelationship[] = sObjectDescribe.childRelationships.filter(childRel => {
             if (!childRel.relationshipName || !childRel.childSObject || !childRel.field) return false;
+            // Filtrado por accesibilidad y consultabilidad
+            // 1. Filtrado por Accesibilidad y Consultabilidad
+            // Asegurarse de que el objeto hijo sea consultable y accesible
+            if (!sfdcApi.isSObjectQueryable(childRel.childSObject) || !sfdcApi.isSObjectAccessible(childRel.childSObject)) {
+                logger.debug(`Omitiendo relación hijo ${childRel.relationshipName} (${childRel.childSObject}) porque el objeto hijo no es consultable o accesible.`);
+                return false;
+            }
 
+            // REQUISITO 1: Excluir campos de paquetes gestionados por defecto para objetos hijo.
             const isNamespacedChildObject = childRel.childSObject.includes('__') && childRel.childSObject.split('__').length > 2;
             if (isNamespacedChildObject && !options.includeNamespacedObjectsInSubqueries) {
-                logger.info(`Omitiendo subconsulta para ${sObjectDescribe.name}.${childRel.relationshipName} (objeto ${childRel.childSObject}) porque es un objeto con namespace y la inclusión no está activada.`);
+                logger.debug(`Omitiendo subconsulta para ${sObjectDescribe.name}.${childRel.relationshipName} (objeto ${childRel.childSObject}) porque es un objeto con namespace y la inclusión no está activada.`);
                 return false;
             }
 
             if (allProcessedObjectNames.has(childRel.childSObject)) {
-                logger.info(`Omitiendo subconsulta para ${sObjectDescribe.name}.${childRel.relationshipName} (objeto ${childRel.childSObject}) porque ${childRel.childSObject} se procesará como objeto principal.`);
+                logger.debug(`Omitiendo subconsulta para ${sObjectDescribe.name}.${childRel.relationshipName} (objeto ${childRel.childSObject}) porque ${childRel.childSObject} se procesará como objeto principal.`);
                 return false;
             }
+
+            // Exclusión de Relaciones de Sistema Comunes (Lista Negra Configurable)
+            const globalExclusions = backupQueryConfig?.globalExclusions || DEFAULT_GLOBAL_EXCLUSIONS;
+            if (globalExclusions.includes(childRel.relationshipName) || globalExclusions.includes(childRel.childSObject)) {
+                logger.debug(`Omitiendo relación hijo ${childRel.relationshipName} (${childRel.childSObject}) debido a la lista de exclusiones globales.`);
+                return false;
+            }
+
             return true;
         });
 
-        // Ordenar alfabéticamente por relationshipName para una selección consistente
-        relevantChildRelationships.sort((a, b) => a.relationshipName!.localeCompare(b.relationshipName!));
+        // Aplicar priorización y ordenación
+        relevantChildRelationships.sort((a, b) => {
+            const aIsCustom = a.childSObject.endsWith('__c');
+            const bIsCustom = b.childSObject.endsWith('__c');
+
+            // 2. Priorización de Objetos Personalizados (`isCustom`)
+            if (aIsCustom && !bIsCustom) return -1;
+            if (!aIsCustom && bIsCustom) return 1;
+
+            // 3. Priorización por Tipo de Relación (Master-Detail > Lookup)
+            // 3. Priorización por Tipo de Relación (Master-Detail > Lookup)
+            // Obtener el campo de la relación en el objeto padre para determinar el tipo
+            // El campo 'field' en childRel es el campo de lookup/master-detail en el objeto hijo que apunta al padre.
+            // Necesitamos el campo en el objeto padre que representa la relación con el hijo.
+            // Sin embargo, el diseño indica que la priorización se basa en el tipo de relación del *hijo* al *padre*.
+            // Esto se refleja en el campo 'field' de childRel.
+            // Un campo Master-Detail en el hijo que apunta al padre suele ser no nillable.
+            const aChildLookupField = sObjectDescribe.fields.find(f => f.name === a.field);
+            const aIsMasterDetail = aChildLookupField?.type === 'reference' && aChildLookupField.nillable === false;
+            const bChildLookupField = sObjectDescribe.fields.find(f => f.name === b.field);
+            const bIsMasterDetail = bChildLookupField?.type === 'reference' && bChildLookupField.nillable === false;
+
+            if (aIsMasterDetail && !bIsMasterDetail) return -1;
+            if (!aIsMasterDetail && bIsMasterDetail) return 1;
+
+            // Configuración de Usuario (Anulación Opcional)
+            const objectConfig = backupQueryConfig?.objectPriorities?.[sObjectDescribe.name];
+            const aRelName = a.relationshipName!;
+            const bRelName = b.relationshipName!;
+
+            // customOrder
+            if (objectConfig?.customOrder) {
+                const aCustomIndex = objectConfig.customOrder.indexOf(aRelName);
+                const bCustomIndex = objectConfig.customOrder.indexOf(bRelName);
+                if (aCustomIndex !== -1 && bCustomIndex !== -1) {
+                    if (aCustomIndex !== bCustomIndex) return aCustomIndex - bCustomIndex;
+                } else if (aCustomIndex !== -1) {
+                    return -1; // a está en customOrder, b no
+                } else if (bCustomIndex !== -1) {
+                    return 1; // b está en customOrder, a no
+                }
+            }
+
+            // includeRelationships (priorizar si están en la lista)
+            if (objectConfig?.includeRelationships) {
+                const aIncluded = objectConfig.includeRelationships.includes(aRelName);
+                const bIncluded = objectConfig.includeRelationships.includes(bRelName);
+                if (aIncluded && !bIncluded) return -1;
+                if (!aIncluded && bIncluded) return 1;
+            }
+
+            // excludeRelationships (despriorizar si están en la lista)
+            if (objectConfig?.excludeRelationships) {
+                const aExcluded = objectConfig.excludeRelationships.includes(aRelName);
+                const bExcluded = objectConfig.excludeRelationships.includes(bRelName);
+                if (aExcluded && !bExcluded) return 1;
+                if (!aExcluded && bExcluded) return -1;
+            }
+
+            // Desempate Determinista: Orden alfabético del relationshipName
+            return aRelName.localeCompare(bRelName);
+        });
+
+        // La ordenación ya se hizo arriba con la lógica de priorización
 
         // Aplicar el límite de subconsultas
         const maxSubqueries = options.maxSubqueryRelationships !== undefined ? options.maxSubqueryRelationships : 20; // Default a 20
@@ -398,6 +550,16 @@ export async function generateSuggestedQueries(
     logger.info('Generando consultas de backup sugeridas (modo conservador)...');
     const suggestedQueries: SuggestedQuery[] = [];
     const objectsInfo = new Map<string, ObjectProcessingInfo>(); // Almacena información sobre cada objeto procesado
+
+    // Cargar la configuración de backup al inicio
+    if (backupQueryConfig === null) {
+        backupQueryConfig = loadBackupQueryConfig();
+        // Sobrescribir opciones con la configuración del archivo si existen
+        if (backupQueryConfig.includeChildRelationshipsInBackupQueries !== undefined) {
+            options.includeChildRelationshipsInBackupQueries = backupQueryConfig.includeChildRelationshipsInBackupQueries;
+        }
+        // Podríamos añadir más opciones aquí si el diseño lo requiere
+    }
 
     let orgIdentifier: string | undefined;
     try {
