@@ -7,6 +7,8 @@ import { Connection } from 'jsforce';
 import { SObjectDescribe, Field /*ChildRelationship, Field*/ } from '../core/typeDefs.js'; // Added Field for explicit typing
 import { sfdcApi } from '../core/sfdc-api.js'; // Updated import
 import { Logger } from '../core/logger.js';
+import { saveBackupQueries, loadBackupQueries } from '../core/queryFileManager.js';
+import prompts from 'prompts';
 
 const logger = new Logger('BackupQuerySuggester');
 
@@ -341,6 +343,48 @@ export async function generateSuggestedQueries(
     const suggestedQueries: SuggestedQuery[] = [];
     const objectsInfo = new Map<string, ObjectProcessingInfo>(); // Almacena información sobre cada objeto procesado
 
+    let orgIdentifier: string | undefined;
+    try {
+        // Asegurar que userInfo esté poblado
+        if (!conn.userInfo) {
+            await conn.identity();
+        }
+
+        if (conn.userInfo?.organizationId) {
+            // Usar el organizationId como identificador único para la caché
+            orgIdentifier = conn.userInfo.organizationId;
+            logger.info(`Usando Organization ID '${orgIdentifier}' para la caché de consultas.`);
+        } else {
+            logger.warn('No se pudo obtener el ID de la organización de la conexión. No se utilizará la caché de consultas.');
+        }
+    } catch (error) {
+        logger.warn(`Error al obtener el ID de la organización: ${(error as Error).message}. No se utilizará la caché de consultas.`);
+    }
+
+    if (orgIdentifier) {
+        try {
+            const cachedQueries = await loadBackupQueries(orgIdentifier);
+            if (cachedQueries && cachedQueries.length > 0) {
+                logger.info(`Se encontraron ${cachedQueries.length} consultas de backup cacheadas para la organización '${orgIdentifier}'.`);
+                const response = await prompts({
+                    type: 'confirm',
+                    name: 'useCached',
+                    message: '¿Desea usar las consultas cacheadas existentes? (No para regenerar)',
+                    initial: true
+                });
+
+                if (response.useCached) {
+                    logger.info('Usando consultas de backup cacheadas.');
+                    return cachedQueries;
+                } else {
+                    logger.info('Regenerando nuevas consultas de backup.');
+                }
+            }
+        } catch (error) {
+            logger.warn(`Error al cargar consultas cacheadas para '${orgIdentifier}': ${(error as Error).message}. Se generarán nuevas consultas.`);
+        }
+    }
+
     try {
         const allSObjectNamesFromAPI = await sfdcApi.listAllSObjects(conn);
         const nonNamespacedPool = new Set(allSObjectNamesFromAPI.filter(name => name.split('__').length <= 2));
@@ -540,6 +584,15 @@ export async function generateSuggestedQueries(
         logger.error(`Error general al generar consultas de backup sugeridas: ${(error as Error).message}`);
         // Decidir si relanzar o devolver array vacío. El original relanza.
         throw error;
+    }
+
+    if (orgIdentifier && suggestedQueries.length > 0) {
+        try {
+            await saveBackupQueries(orgIdentifier, suggestedQueries);
+            logger.info(`Consultas de backup guardadas en caché para la organización '${orgIdentifier}'.`);
+        } catch (error) {
+            logger.error(`Error al guardar consultas de backup en caché para '${orgIdentifier}': ${(error as Error).message}`);
+        }
     }
     return suggestedQueries;
 }
