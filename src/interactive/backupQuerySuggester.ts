@@ -246,9 +246,15 @@ async function buildSOQLQuery(
             }
 
             try {
-                const childDescribe = await sfdcApi.describeSObject(conn, childRel.childSObject);
+                let childObjectNameToDescribe = childRel.childSObject;
+                // Corrección específica para la peculiaridad de metadatos de AccountContactRelations
+                if (childObjectNameToDescribe === 'AccountContactRelations') {
+                    childObjectNameToDescribe = 'AccountContactRelation';
+                    logger.warn(`Corrigiendo nombre de objeto hijo de 'AccountContactRelations' a 'AccountContactRelation' para la descripción.`);
+                }
+                const childDescribe = await sfdcApi.describeSObject(conn, childObjectNameToDescribe);
                 if (!childDescribe.queryable) {
-                    logger.debug(`Objeto hijo ${childRel.childSObject} de la relación ${childRel.relationshipName} no es consultable. Omitiendo subconsulta.`);
+                    logger.debug(`Objeto hijo ${childObjectNameToDescribe} de la relación ${childRel.relationshipName} no es consultable. Omitiendo subconsulta.`);
                     continue;
                 }
 

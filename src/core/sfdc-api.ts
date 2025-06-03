@@ -19,6 +19,35 @@ const idDisplayValueCache = new Map<string, Map<string, string>>(); // Map<SObje
 
 // Nuevo caché para el tipo de API de SObject
 const sObjectApiTypeCache = new Map<string, 'standard' | 'tooling'>();
+// Nuevo caché para todos los SObjects con sus nombres y etiquetas plurales
+const allSObjectsWithPluralLabelsCache = new Map<string, { name: string, labelPlural?: string }>();
+
+/**
+ * Popula el caché de todos los SObjects consultables con sus nombres y etiquetas plurales.
+ * Esto se usa para mapear nombres de relaciones potencialmente plurales a nombres de objetos API singulares.
+ * @param conn Conexión de jsforce.
+ */
+async function _populateAllSObjectsWithPluralLabels(conn: Connection): Promise<void> {
+  if (allSObjectsWithPluralLabelsCache.size > 0) {
+    logger.debug('DEBUG: Caché de SObjects con etiquetas plurales ya poblado.');
+    return;
+  }
+  try {
+    const describeGlobalResult = await conn.describeGlobal();
+    describeGlobalResult.sobjects.forEach(sobj => {
+      if (sobj.queryable) {
+        allSObjectsWithPluralLabelsCache.set(sobj.name.toLowerCase(), { name: sobj.name, labelPlural: sobj.labelPlural });
+        // También añadir la etiqueta plural como clave si es diferente del nombre
+        if (sobj.labelPlural && sobj.labelPlural.toLowerCase() !== sobj.name.toLowerCase()) {
+          allSObjectsWithPluralLabelsCache.set(sobj.labelPlural.toLowerCase(), { name: sobj.name, labelPlural: sobj.labelPlural });
+        }
+      }
+    });
+    logger.debug(`DEBUG: Caché de SObjects con etiquetas plurales poblado con ${allSObjectsWithPluralLabelsCache.size} entradas.`);
+  } catch (error) {
+    logger.error(`ERROR: Fallo al poblar el caché de SObjects con etiquetas plurales: ${(error as Error).message}`);
+  }
+}
 
 // Lista de SObjects conocidos que son exclusivamente de la API de Tooling
 const TOOLING_API_SOBJECTS = new Set([
@@ -91,60 +120,110 @@ async function _determineApiForSObject(conn: Connection, sObjectName: string): P
  * @param conn Conexión de jsforce.
  * @param objectName El nombre de API del objeto.
  */
-async function _describeSObject(conn: Connection, objectName: string): Promise<SObjectDescribe> {
-  logger.debug(`DEBUG: Describiendo SObject: ${objectName}`);
-  if (sObjectDescribeCache.has(objectName)) {
-    logger.debug(`DEBUG: Usando caché para la descripción de ${objectName}`);
-    return sObjectDescribeCache.get(objectName)!;
-  }
-  try {
-    const describeFromJsforce = await conn.sobject(objectName).describe$();
-
-    const transformedFields: Field[] = describeFromJsforce.fields.map(jsforceField => {
-        const jsforceFieldAsAny = jsforceField as any;
+function _transformJsforceDescribe(describeFromJsforce: any): SObjectDescribe {
+    const transformedFields: Field[] = describeFromJsforce.fields.map((jsforceField: any) => {
         return {
-            // Asignar propiedades directamente si los nombres y tipos básicos coinciden
             name: jsforceField.name,
             label: jsforceField.label,
-            type: jsforceField.type, // Asumimos que el tipo 'string' es compatible
+            type: jsforceField.type,
             custom: jsforceField.custom,
             updateable: jsforceField.updateable,
             createable: jsforceField.createable,
             nillable: jsforceField.nillable,
             relationshipName: jsforceField.relationshipName,
             referenceTo: jsforceField.referenceTo,
-            // Añadir explícitamente 'queryable', con un valor por defecto si no es booleano
-            queryable: typeof jsforceFieldAsAny.queryable === 'boolean' ? jsforceFieldAsAny.queryable : false,
-        } as Field; // Forzar el tipo al de nuestra interfaz Field
+            queryable: typeof jsforceField.queryable === 'boolean' ? jsforceField.queryable : false,
+        } as Field;
     });
 
-    const finalDescribe: SObjectDescribe = {
-        // Propiedades de jsforce.DescribeSObjectResult que son compatibles con SObjectDescribe
+    return {
         name: describeFromJsforce.name,
         label: describeFromJsforce.label,
         custom: describeFromJsforce.custom,
-        queryable: describeFromJsforce.queryable, // Nivel SObject
+        queryable: describeFromJsforce.queryable,
         retrieveable: describeFromJsforce.retrieveable,
-        keyPrefix: describeFromJsforce.keyPrefix, // Compatible
+        keyPrefix: describeFromJsforce.keyPrefix,
         labelPlural: describeFromJsforce.labelPlural,
         feedEnabled: describeFromJsforce.feedEnabled,
-        
-        // Propiedades transformadas o ajustadas
         fields: transformedFields,
-        
-        // Propiedades opcionales en SObjectDescribe, mapeadas desde jsforce
         childRelationships: describeFromJsforce.childRelationships ? describeFromJsforce.childRelationships as ChildRelationship[] : undefined,
-        url: describeFromJsforce.urls?.describe, // Corregido: tomar la URL 'describe' del objeto 'urls'
-        recordTypeInfos: describeFromJsforce.recordTypeInfos ? describeFromJsforce.recordTypeInfos as any[] : undefined, // Nuestro 'recordTypeInfos' es 'any[]'
+        url: describeFromJsforce.urls?.describe,
+        recordTypeInfos: describeFromJsforce.recordTypeInfos ? describeFromJsforce.recordTypeInfos as any[] : undefined,
     };
-
-    sObjectDescribeCache.set(objectName, finalDescribe);
-    logger.debug(`DEBUG: Descripción de ${objectName} obtenida, transformada y cacheada.`);
-    return finalDescribe;
-  } catch (error) {
-    logger.error(`ERROR: Fallo al describir el objeto ${objectName}: ${(error as Error).message}`);
-    throw error;
+}
+async function _describeSObject(conn: Connection, objectName: string): Promise<SObjectDescribe> {
+  logger.debug(`DEBUG: Describiendo SObject: ${objectName}`);
+  if (sObjectDescribeCache.has(objectName)) {
+    logger.debug(`DEBUG: Usando caché para la descripción de ${objectName}`);
+    return sObjectDescribeCache.get(objectName)!;
   }
+
+  let describeFromJsforce;
+  let finalObjectName = objectName;
+
+  try {
+    describeFromJsforce = await conn.sobject(objectName).describe$();
+  } catch (initialError: any) {
+    if (initialError.message && initialError.message.includes('The requested resource does not exist')) {
+      logger.warn(`ADVERTENCIA: Fallo al describir '${objectName}': ${initialError.message}. Intentando encontrar un nombre de objeto API coincidente.`);
+      
+      await _populateAllSObjectsWithPluralLabels(conn); // Asegurar que el caché esté poblado
+
+      const lowerCaseObjectName = objectName.toLowerCase();
+      let correctedObjectName: string | undefined;
+
+      // 1. Buscar una coincidencia directa con nombres API o etiquetas plurales
+      const foundInCache = allSObjectsWithPluralLabelsCache.get(lowerCaseObjectName);
+      if (foundInCache) {
+        correctedObjectName = foundInCache.name;
+        logger.info(`INFO: '${objectName}' coincide con el nombre API singular '${correctedObjectName}' o su etiqueta plural.`);
+      }
+
+      // 2. Fallback: heurística de singularización si no se encontró una coincidencia directa,
+      // pero solo si el resultado de la heurística existe en la lista de SObjects reales.
+      if (!correctedObjectName) {
+        if (lowerCaseObjectName.endsWith('s')) {
+          const potentialSingular = lowerCaseObjectName.slice(0, -1);
+          const foundByHeuristic = allSObjectsWithPluralLabelsCache.get(potentialSingular);
+          if (foundByHeuristic) {
+            correctedObjectName = foundByHeuristic.name;
+            logger.info(`INFO: '${objectName}' (plural heurístico) singularizado a '${correctedObjectName}' y encontrado en la lista de SObjects.`);
+          }
+        } else if (lowerCaseObjectName.endsWith('ies')) {
+          const potentialSingular = lowerCaseObjectName.replace(/ies$/, 'y');
+          const foundByHeuristic = allSObjectsWithPluralLabelsCache.get(potentialSingular);
+          if (foundByHeuristic) {
+            correctedObjectName = foundByHeuristic.name;
+            logger.info(`INFO: '${objectName}' (plural heurístico) singularizado a '${correctedObjectName}' y encontrado en la lista de SObjects.`);
+          }
+        }
+      }
+
+      if (correctedObjectName) {
+        logger.info(`INFO: Se encontró un nombre de objeto API corregido: '${correctedObjectName}'. Reintentando la descripción.`);
+        try {
+          describeFromJsforce = await conn.sobject(correctedObjectName).describe$();
+          finalObjectName = correctedObjectName;
+        } catch (retryError: any) {
+          logger.error(`ERROR: Fallo al describir el objeto corregido '${correctedObjectName}'. Error: ${retryError.message}`);
+          throw initialError; // Relanzar el error original si el reintento también falla
+        }
+      } else {
+        logger.error(`ERROR: No se pudo encontrar un nombre de objeto API coincidente para '${objectName}'. Relanzando el error original.`);
+        throw initialError; // Relanzar el error original si no se encuentra un nombre singular
+      }
+    } else {
+      throw initialError; // Relanzar cualquier otro error
+    }
+  }
+
+  const finalDescribe = _transformJsforceDescribe(describeFromJsforce);
+  sObjectDescribeCache.set(objectName, finalDescribe); // Cachear el nombre original (incluso si es plural/incorrecto)
+  if (objectName !== finalObjectName) {
+    sObjectDescribeCache.set(finalObjectName, finalDescribe); // Cachear también el nombre corregido si es diferente
+  }
+  logger.debug(`DEBUG: Descripción de ${finalObjectName} (original: ${objectName}) obtenida, transformada y cacheada.`);
+  return finalDescribe;
 }
 
 /**
