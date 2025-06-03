@@ -103,7 +103,7 @@ program
   .command('extract')
   .description('Extrae datos de una organización de origen usando una consulta SOQL o SOSL.')
   .option('-u, --username <username>', 'Nombre de usuario o alias de la organización de origen (reemplaza a -s)') // -s ahora es -u
-  .option('-a, -T, --target-alias <alias>', 'Alias específico de la organización de origen (tiene precedencia sobre -u si ambos se proporcionan)')
+  .option('-a, --target-alias <alias>', 'Alias específico de la organización de origen (tiene precedencia sobre -u si ambos se proporcionan)')
   .option('-q, --query <soql>', 'La consulta SOQL para extraer los datos')
   .option('--sosl <soslQuery>', 'Permite especificar una consulta SOSL para la extracción de datos')
   .option('-o, --output <path>', 'Ruta del directorio de salida para los datos', './data')

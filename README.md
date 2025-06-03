@@ -1,6 +1,6 @@
 ---
 creado: 2025-05-30
-actualizado: 2025-06-01
+actualizado: 2025-06-03
 ---
 # Salesforce Database Copier
 
@@ -22,7 +22,12 @@ Migrar datos entre entornos de Salesforce (ej: de Producción a una Sandbox, o e
   * **Despliegue en Dos Fases:** Maneja dependencias circulares o complejas mediante un proceso de dos fases. La **Fase 1 (`processInsertPass`)** realiza la inserción inicial de registros y genera mapas de IDs. La **Fase 2 (`processUpdatePass`)** utiliza estos mapas de IDs para resolver y actualizar las relaciones de búsqueda (lookups) que no pudieron ser establecidas durante la Fase 1, asegurando la integridad referencial. Esta fase también genera logs de errores específicos para las actualizaciones (ej. `<ObjectName>-update-errors.json`).
   * **Interfaz de Usuario Clara:** Ofrece feedback constante con indicadores de progreso, logs de colores y resúmenes de operación.
   * **Seguro por Defecto:** Pide confirmación antes de ejecutar operaciones que modifiquen datos en un entorno de destino.
-  * **Modo Interactivo Guiado:** Una interfaz paso a paso para configurar y ejecutar operaciones, incluyendo la gestión de consultas SOQL y la generación asistida de consultas para backups. Ideal para usuarios nuevos o para tareas complejas.
+  * **Modo Interactivo Guiado:** Una interfaz paso a paso para configurar y ejecutar operaciones. Incluye la gestión de consultas SOQL y una **generación asistida de consultas para backups mejorada**:
+    *   **Modo Conservador (por defecto):** Analiza datos reales para identificar campos y relaciones de búsqueda activamente utilizados, resultando en sugerencias de consulta más precisas y relevantes.
+    *   **Priorización Inteligente:** Da prioridad a un conjunto de objetos fundamentales de Salesforce (Account, Case, Contact, Opportunity, User, RecordType, Task, Event).
+    *   **Descubrimiento de Relaciones:** Incluye objetos relacionados en las sugerencias si sus campos de búsqueda correspondientes están poblados con datos en la organización de origen.
+    *   **Reducción de Redundancia:** Lógica optimizada para evitar sugerencias redundantes, como subconsultas para objetos que ya se planea consultar directamente.
+    Ideal para usuarios nuevos o para tareas complejas.
   * **Listado Directo de Objetos:** Accede rápidamente a una lista de todos los SObjects disponibles en tu organización de origen a través del modo interactivo. Consulta la [Guía de Listar Objetos](.localdevserver/docs/user_guide/Modo_Interactivo_Listar_Objetos.md) para más detalles.
 *   **Gestión Centralizada de Alias de Organización:** Permite gestionar y visualizar los alias de Salesforce CLI directamente desde la herramienta, facilitando la selección de la organización activa para operaciones como la extracción de datos, tanto en modo CLI como interactivo.
 *   **Extracción de Datos Asistida (Modo Interactivo):** Configura y ejecuta extracciones de datos complejas, incluyendo la gestión de consultas SOQL y la selección de API, de forma guiada. Consulta la [Guía de Extraer Datos (Modo Interactivo)](projects/salesforce-copy-database/docs/user_guides/interactive_mode/extract_data.md) para más detalles.
