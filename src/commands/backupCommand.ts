@@ -110,7 +110,7 @@ async function getFieldsToQuery(conn: Connection, sObjectName: string): Promise<
     const fieldMapForCsv: Record<string, string> = {};
 
     for (const field of describe.fields) {
-        if (field.type === 'address' || !field.queryable) { // Omitir campos de dirección compuestos y no consultables
+        if (field.type === 'address' || !field.filterable) { // Omitir campos de dirección compuestos y no consultables
             continue;
         }
         soqlFields.push(field.name);

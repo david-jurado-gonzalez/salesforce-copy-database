@@ -14,6 +14,7 @@ import { fileURLToPath } from 'url';
 import { readFileSync } from 'fs';
 
 const logger = new Logger('BackupQuerySuggester');
+//logger.setLogLevel('debug'); // Establecer nivel de log para esta instancia
 
 const STANDARD_AUDIT_FIELDS = ['CreatedDate', 'LastModifiedDate', 'CreatedById', 'LastModifiedById', 'SystemModstamp']; // SystemModstamp es común
 const EXCLUDED_FIELD_TYPES_FOR_SELECT = ['base64', 'address', 'location', 'complexvalue']; // Tipos a excluir del SELECT principal
@@ -142,13 +143,13 @@ async function getPopulatedFieldsAndLookups(
     // Esto aplica a campos de datos y lookups.
     sObjectDescribe.fields.forEach(field => {
         // Incluir campos de lookup para verificar si están poblados y qué referencian
-        if (field.type === 'reference' && field.referenceTo && field.referenceTo.length > 0 && field.queryable &&
+        if (field.type === 'reference' && field.referenceTo && field.referenceTo.length > 0 && field.filterable &&
             (!isNamespacedField(field.name) || options.includeNamespacedFields)) {
             fieldsToQuery.add(field.name);
         }
         // Incluir otros campos consultables que no sean de tipos excluidos, auditoría o Id para el sondeo de datos
         else if (
-            field.queryable &&
+            field.filterable &&
             !EXCLUDED_FIELD_TYPES_FOR_SELECT.includes(field.type) &&
             !STANDARD_AUDIT_FIELDS.includes(field.name) &&
             field.name.toLowerCase() !== 'id' &&
@@ -224,12 +225,23 @@ async function getPopulatedFieldsAndLookups(
 function getInterestingFields(sObjectDescribe: SObjectDescribe, options: QuerySuggestionOptions): string[] {
     const fieldsToInclude: Set<string> = new Set();
 
-    // Incluir Id siempre
+    // 1. Incluir Id siempre
     fieldsToInclude.add('Id');
 
-    // REQUISITO 2: Excluir campos técnicos por defecto. Incluir solo si la opción está activada.
+    // 2. Incluir Name si existe, es string y consultable
+    const nameFieldDescribe = sObjectDescribe.fields.find(f => f.name.toLowerCase() === 'name' && f.type === 'string' && f.filterable);
+    if (nameFieldDescribe) {
+        fieldsToInclude.add(nameFieldDescribe.name); // Usar el nombre original con su capitalización
+    }
+
+    // 3. Incluir campos de auditoría estándar si la opción está activada y existen en el objeto
     if (options.includeTechnicalFields) {
-        STANDARD_AUDIT_FIELDS.forEach(field => fieldsToInclude.add(field));
+        STANDARD_AUDIT_FIELDS.forEach(auditFieldName => {
+            const auditField = sObjectDescribe.fields.find(f => f.name === auditFieldName);
+            if (auditField && auditField.filterable) { // Asegurar que exista y sea consultable
+                fieldsToInclude.add(auditField.name);
+            }
+        });
     }
 
     // Helper para identificar campos con namespace
@@ -238,41 +250,47 @@ function getInterestingFields(sObjectDescribe: SObjectDescribe, options: QuerySu
         return parts.length > 2 && parts[0].length > 0;
     };
 
-    // Incluir Id siempre
-    fieldsToInclude.add('Id');
+    sObjectDescribe.fields.forEach((field: Field) => {
+        // Saltar si ya está incluido (Id, Name, campos de auditoría ya procesados)
+        if (fieldsToInclude.has(field.name)) {
+            return;
+        }
 
-    // REQUISITO 2: Excluir campos técnicos por defecto. Incluir solo si la opción está activada.
-    if (options.includeTechnicalFields) {
-        STANDARD_AUDIT_FIELDS.forEach(field => fieldsToInclude.add(field));
-    }
-
-    sObjectDescribe.fields.forEach((field: Field) => { // Added type
-        // REQUISITO 1: Excluir campos de paquetes gestionados por defecto.
+        // Excluir campos de paquetes gestionados por defecto, a menos que la opción esté activada
         if (isNamespacedField(field.name) && !options.includeNamespacedFields) {
             logger.debug(`Omitiendo campo con namespace ${sObjectDescribe.name}.${field.name} porque la inclusión no está activada.`);
-            return; // Saltar este campo
+            return;
         }
 
-        // Incluir campo Name si existe y es un string
-        if (field.name.toLowerCase() === 'name' && field.type === 'string') {
+        // Excluir campos técnicos estándar si la opción NO está activada Y el campo es uno de ellos.
+        // Esta es una salvaguarda. La lógica principal de inclusión/exclusión de STANDARD_AUDIT_FIELDS está arriba.
+        if (STANDARD_AUDIT_FIELDS.includes(field.name) && !options.includeTechnicalFields) {
+            // Este campo no debería haber sido añadido por la lógica anterior si options.includeTechnicalFields es false.
+            // Este 'return' confirma su exclusión.
+            logger.debug(`Omitiendo campo técnico estándar (no incluido por opción) ${sObjectDescribe.name}.${field.name}.`);
+            return;
+        }
+
+        // Excluir campos de tipos específicos
+        if (EXCLUDED_FIELD_TYPES_FOR_SELECT.includes(field.type)) {
+            logger.debug(`Omitiendo campo de tipo excluido ${sObjectDescribe.name}.${field.name} (tipo: ${field.type}).`);
+            return;
+        }
+
+        // Excluir campos de relación directa (ej. Account__r)
+        if (field.name.toLowerCase().endsWith('__r')) {
+            logger.debug(`Omitiendo campo de relación directa ${sObjectDescribe.name}.${field.name}.`);
+            return;
+        }
+
+        // Incluir solo campos consultables (que no hayan sido excluidos por otras razones)
+        if (field.filterable) {
             fieldsToInclude.add(field.name);
-        }
-
-        // Incluir todos los campos personalizados que no sean de un tipo excluido
-        if (field.custom && !EXCLUDED_FIELD_TYPES_FOR_SELECT.includes(field.type)) {
-            fieldsToInclude.add(field.name);
-        }
-
-        // Incluir campos de búsqueda a objetos padre (lookup/master-detail)
-        // Se añadirán como Object__r.Name o Object__r.Id si Name no existe
-        if (field.type === 'reference' && field.referenceTo && field.referenceTo.length > 0 && field.relationshipName) {
-            // La lógica para añadir el campo del padre se manejará en la construcción de la query
-            // Aquí solo nos aseguramos de que el campo de ID de la relación se incluya si no es ya un campo estándar
-            if (!STANDARD_AUDIT_FIELDS.includes(field.name) && field.name.toLowerCase() !== 'id' && field.name.toLowerCase() !== 'name') {
-                 fieldsToInclude.add(field.name); // Incluye el ID del lookup
-            }
+        } else {
+            logger.debug(`Omitiendo campo no filtrable ${sObjectDescribe.name}.${field.name}.`);
         }
     });
+
     logger.debug(`Campos interesantes para ${sObjectDescribe.name}: ${Array.from(fieldsToInclude).join(', ')}`);
     return Array.from(fieldsToInclude);
 }
@@ -323,7 +341,7 @@ async function buildSOQLQuery(
         field.type === 'reference' &&
         selectFields.has(field.name) && // El campo de ID del lookup (ej. AccountId) debe estar en los campos "usados"
         field.referenceTo && field.referenceTo.length > 0 &&
-        field.relationshipName && field.queryable
+        field.relationshipName && field.filterable
     );
 
     for (const field of lookupFieldsInSelection) {
@@ -331,19 +349,19 @@ async function buildSOQLQuery(
         try {
             const parentDescribe = await sfdcApi.describeSObject(conn, parentObjectName);
             let parentDisplayFieldName = 'Id';
-            const nameField = parentDescribe.fields.find(f => f.name.toLowerCase() === 'name' && f.queryable);
+            const nameField = parentDescribe.fields.find(f => f.name.toLowerCase() === 'name' && f.filterable);
             if (nameField) {
                 parentDisplayFieldName = nameField.name;
             } else {
                 const commonDisplayFields = ['Username', 'CaseNumber', 'Subject']; // Añadido Subject
                 for (const dfName of commonDisplayFields) {
-                    if (parentDescribe.fields.some(f => f.name === dfName && f.type === 'string' && f.queryable)) {
+                    if (parentDescribe.fields.some(f => f.name === dfName && f.type === 'string' && f.filterable)) {
                         parentDisplayFieldName = dfName;
                         break;
                     }
                 }
                 if (parentDisplayFieldName === 'Id') {
-                    const firstStringField = parentDescribe.fields.find(f => f.type === 'string' && f.name !== 'Id' && f.queryable);
+                    const firstStringField = parentDescribe.fields.find(f => f.type === 'string' && f.name !== 'Id' && f.filterable);
                     if (firstStringField) parentDisplayFieldName = firstStringField.name;
                 }
             }
@@ -484,7 +502,7 @@ async function buildSOQLQuery(
                     logger.warn(`Corrigiendo nombre de objeto hijo de 'AccountContactRelations' a 'AccountContactRelation' para la descripción.`);
                 }
                 const childDescribe = await sfdcApi.describeSObject(conn, childObjectNameToDescribe);
-                if (!childDescribe.queryable) {
+                if (!childDescribe.filterable) {
                     logger.debug(`Objeto hijo ${childObjectNameToDescribe} de la relación ${childRel.relationshipName} no es consultable. Omitiendo subconsulta.`);
                     continue;
                 }
@@ -694,7 +712,7 @@ export async function generateSuggestedQueries(
             logger.info(`Sondeando objeto para campos y relaciones: ${currentObjectName}`);
             try {
                 const sObjectDescribe = await sfdcApi.describeSObject(conn, currentObjectName);
-                if (!sObjectDescribe.queryable) {
+                if (!sObjectDescribe.filterable) {
                     logger.info(`Objeto ${currentObjectName} no es consultable, omitiendo de sugerencias.`);
                     objectInfo.processed = true; // Marcar como procesado para no reintentar
                     finalObjectNamesToProcess.delete(currentObjectName); // Asegurar que no se procese para query
@@ -707,9 +725,12 @@ export async function generateSuggestedQueries(
                 const { populatedDataFields, populatedLookupObjects } = await getPopulatedFieldsAndLookups(conn, currentObjectName, sObjectDescribe, options);
 
                 objectInfo.usedFields.add('Id'); // Id siempre
-                STANDARD_AUDIT_FIELDS.forEach(af => { // Campos de auditoría siempre
-                    if (sObjectDescribe.fields.some(f => f.name === af)) objectInfo.usedFields.add(af);
-                });
+                // REQUISITO 2: Excluir campos técnicos por defecto. Incluir solo si la opción está activada.
+                if (options.includeTechnicalFields) {
+                    STANDARD_AUDIT_FIELDS.forEach(af => {
+                        if (sObjectDescribe.fields.some(f => f.name === af)) objectInfo.usedFields.add(af);
+                    });
+                }
                 const nameField = sObjectDescribe.fields.find(f => f.name.toLowerCase() === 'name' && f.type === 'string');
                 if (nameField) objectInfo.usedFields.add(nameField.name); // Name siempre si existe
 
@@ -748,40 +769,35 @@ export async function generateSuggestedQueries(
 
         for (const objectName of finalObjectNamesToProcess) {
             try {
-                const objectInfo = objectsInfo.get(objectName);
                 const sObjectDescribe = await sfdcApi.describeSObject(conn, objectName); // Re-obtener describe para buildSOQLQuery
 
-                if (!sObjectDescribe.queryable) { // Doble check
+                if (!sObjectDescribe.filterable) { // Doble check
                     logger.info(`Objeto ${objectName} no es consultable (verificación final), omitiendo query.`);
                     continue;
                 }
 
-                let fieldsForQuery: string[];
-                if (objectInfo && objectInfo.usedFields.size > 0) {
-                    fieldsForQuery = Array.from(objectInfo.usedFields);
-                } else { // Fallback si no hay info de sondeo o no se encontraron campos usados (además de Id/auditoría)
-                    // Fallback si no hay info de sondeo o no se encontraron campos usados (además de Id/auditoría)
-                    logger.info(`No se determinaron campos específicos con datos para ${objectName} o faltó información de sondeo; usando getInterestingFields como fallback.`);
-                    fieldsForQuery = getInterestingFields(sObjectDescribe, options);
+                // Siempre empezar con los campos "interesantes" como base
+                const interestingFields = getInterestingFields(sObjectDescribe, options);
+                logger.debug(`[DEBUG ${objectName}] Campos de getInterestingFields: ${Array.from(interestingFields).join(', ')}`);
+
+                const fieldsForQuerySet = new Set<string>(interestingFields);
+                logger.debug(`[DEBUG ${objectName}] fieldsForQuerySet DESPUÉS de getInterestingFields: ${Array.from(fieldsForQuerySet).join(', ')}`);
+                
+                // Añadir los campos poblados detectados por el sondeo
+                const { populatedDataFields } = await getPopulatedFieldsAndLookups(conn, objectName, sObjectDescribe, options);
+                logger.debug(`[DEBUG ${objectName}] Campos de getPopulatedFieldsAndLookups (populatedDataFields): ${Array.from(populatedDataFields).join(', ')}`);
+
+                populatedDataFields.forEach(f => fieldsForQuerySet.add(f));
+                logger.debug(`[DEBUG ${objectName}] fieldsForQuerySet DESPUÉS de añadir populatedDataFields: ${Array.from(fieldsForQuerySet).join(', ')}`);
+
+                // La condición de omisión debe ser más estricta si solo hay Id y no hay otros campos "útiles".
+                logger.debug(`[DEBUG ${objectName}] ANTES del IF de omisión - fieldsForQuerySet.size: ${fieldsForQuerySet.size}, fieldsForQuerySet.has('Id'): ${fieldsForQuerySet.has('Id')}`);
+                if (fieldsForQuerySet.size === 0 || (fieldsForQuerySet.size === 1 && fieldsForQuerySet.has('Id'))) {
+                    logger.info(`No se encontraron campos suficientes para generar una consulta útil para ${objectName} (solo Id o ninguno tras análisis), omitiendo.`);
+                    continue;
                 }
                 
-                // Asegurar que al menos Id y campos de auditoría estén, si no, no tiene sentido la query
-                const finalFieldsCheck = new Set(fieldsForQuery);
-                finalFieldsCheck.add('Id');
-                // REQUISITO 2: Excluir campos técnicos por defecto. Incluir solo si la opción está activada.
-                if (options.includeTechnicalFields) {
-                   STANDARD_AUDIT_FIELDS.forEach(af => {
-                         if (sObjectDescribe.fields.some(f => f.name === af)) finalFieldsCheck.add(af);
-                   });
-                } // End of REQUISITO 2 block
- 
-                 if (finalFieldsCheck.size === 0 || (finalFieldsCheck.size === 1 && finalFieldsCheck.has('Id') && !STANDARD_AUDIT_FIELDS.some(af => sObjectDescribe.fields.some(f => f.name === af)))) {
-                      logger.info(`No se encontraron campos suficientes para generar una consulta útil para ${objectName} (solo Id o ninguno tras análisis), omitiendo.`);
-                      continue;
-                 }
-
-
-                const query = await buildSOQLQuery(conn, sObjectDescribe, Array.from(finalFieldsCheck), finalObjectNamesToProcess, options);
+                const query = await buildSOQLQuery(conn, sObjectDescribe, Array.from(fieldsForQuerySet), finalObjectNamesToProcess, options);
                 suggestedQueries.push({
                     objectName,
                     query,

@@ -275,7 +275,7 @@ export class CacheManager {
                 picklistValues: f.picklistValues?.map((pv: any) => ({ value: pv.value, label: pv.label, active: pv.active })),
                 referenceTo: f.referenceTo || undefined, // Ensure it is string[] or undefined
                 relationshipName: f.relationshipName || undefined, // Ensure it is string or undefined
-                filterable: f.queryable, // Assuming filterable maps from queryable at field level if there is no direct 'filterable'
+                filterable: f.filterable, // Assuming filterable maps from queryable at field level if there is no direct 'filterable'
                 nillable: f.nillable,
                 unique: f.unique,
                 externalId: f.externalId,

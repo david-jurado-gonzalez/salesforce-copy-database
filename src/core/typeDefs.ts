@@ -78,7 +78,7 @@ export interface Field {
   scale?: number;
   digits?: number; // Añadido
   picklistValues?: any[] | null;
-  queryable: boolean; // Añadido
+  filterable: boolean; // Añadido
   calculated?: boolean; // Añadido
   calculatedFormula?: string | null; // Añadido
   defaultValueFormula?: string | null; // Añadido
@@ -97,7 +97,7 @@ export interface SObjectDescribe {
   keyPrefix: string | null | undefined; // Modificado para compatibilidad con jsforce
   custom: boolean;
   feedEnabled: boolean; // Añadido
-  queryable: boolean;
+  filterable: boolean;
   retrieveable: boolean; // Añadido para soportar la detección de Tooling API
   url?: string; // Añadido para soportar la detección de Tooling API (describe.url)
   fields: Field[];

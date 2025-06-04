@@ -1,13 +1,27 @@
 // src/core/sfdc-api.ts
 import { Connection } from 'jsforce';
 import { SObjectDescribe, ChildRelationship, Field } from './typeDefs.js'; // Importar ChildRelationship y Field
-import * as fs from 'fs'; // Cambiado para importar todo el módulo fs
+import * as fs from 'fs';
 import path from 'path';
 import { Readable } from 'stream';
 import { Logger } from './logger.js';
 
 const logger = new Logger('SfdcApi');
+// El nivel de log para este logger principal se establecerá globalmente en main.ts
 import { fileManagerAPI } from './fileManager.js'; // Se necesitará esta función
+
+let fieldDebugLogger: Logger; // Declarar una variable para el logger de depuración de campos
+
+/**
+ * Inicializa el logger de depuración de campos con la ruta de archivo especificada.
+ * Debe llamarse una vez al inicio de la aplicación.
+ * @param logFilePath La ruta del archivo donde se escribirán los logs de depuración de campos.
+ * @param logLevel El nivel de log a establecer para el logger de depuración de campos.
+ */
+export function initializeSfdcApiLogger(logFilePath: string, logLevel: string): void {
+  fieldDebugLogger = new Logger('FieldDebug', logFilePath);
+  fieldDebugLogger.setLogLevel(logLevel); // Usar el nivel de log pasado
+}
 
 // Caché para descripciones de SObject
 const sObjectDescribeCache = new Map<string, SObjectDescribe>();
@@ -98,7 +112,7 @@ async function _determineApiForSObject(conn: Connection, sObjectName: string): P
     if (describe.url && describe.url.includes('/tooling/')) {
       apiType = 'tooling';
       logger.debug(`DEBUG: ${sObjectName} determinado como Tooling API por URL: ${describe.url}`);
-    } else if (TOOLING_API_SOBJECTS.has(sObjectName) && describe.queryable && describe.retrieveable) {
+    } else if (TOOLING_API_SOBJECTS.has(sObjectName) && describe.filterable && describe.retrieveable) {
       // Si está en la lista de conocidos y es consultable/recuperable
       apiType = 'tooling';
       logger.debug(`DEBUG: ${sObjectName} determinado como Tooling API por lista de conocidos y propiedades queryable/retrieveable.`);
@@ -132,7 +146,7 @@ function _transformJsforceDescribe(describeFromJsforce: any): SObjectDescribe {
             nillable: jsforceField.nillable,
             relationshipName: jsforceField.relationshipName,
             referenceTo: jsforceField.referenceTo,
-            queryable: typeof jsforceField.queryable === 'boolean' ? jsforceField.queryable : false,
+            filterable: typeof jsforceField.filterable === 'boolean' ? jsforceField.filterable : false,
         } as Field;
     });
 
@@ -140,7 +154,7 @@ function _transformJsforceDescribe(describeFromJsforce: any): SObjectDescribe {
         name: describeFromJsforce.name,
         label: describeFromJsforce.label,
         custom: describeFromJsforce.custom,
-        queryable: describeFromJsforce.queryable,
+        filterable: describeFromJsforce.queryable,
         retrieveable: describeFromJsforce.retrieveable,
         keyPrefix: describeFromJsforce.keyPrefix,
         labelPlural: describeFromJsforce.labelPlural,
@@ -163,6 +177,13 @@ async function _describeSObject(conn: Connection, objectName: string): Promise<S
 
   try {
     describeFromJsforce = await conn.sobject(objectName).describe$();
+    // Registrar los valores de queryable y type en el archivo de log de depuración
+    if (fieldDebugLogger && describeFromJsforce && Array.isArray(describeFromJsforce.fields)) {
+      fieldDebugLogger.debug(`[${objectName}] Campos:`);
+      describeFromJsforce.fields.forEach((f: Field) => {
+        fieldDebugLogger.debug(`  - ${f.name}: filterable=${f.filterable}, type=${f.type}`);
+      });
+    }
   } catch (initialError: any) {
     if (initialError.message && initialError.message.includes('The requested resource does not exist')) {
       logger.warn(`ADVERTENCIA: Fallo al describir '${objectName}': ${initialError.message}. Intentando encontrar un nombre de objeto API coincidente.`);
@@ -277,7 +298,7 @@ async function _listAllSObjects(conn: Connection): Promise<string[]> {
  */
 function _isSObjectQueryable(sObjectName: string): boolean {
     const describe = sObjectDescribeCache.get(sObjectName);
-    return describe ? describe.queryable : false;
+    return describe ? describe.filterable : false;
 }
 
 /**
@@ -643,4 +664,5 @@ export const sfdcApi = {
   extractDataBulk: _extractDataBulk,
   extractDataQuery: _extractDataQuery,
   executeSoslQuery: _executeSoslQuery,
+  initializeSfdcApiLogger: initializeSfdcApiLogger, // Exportar la nueva función
 };

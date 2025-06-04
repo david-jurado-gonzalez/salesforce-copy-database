@@ -12,6 +12,8 @@ import { restoreData } from './commands/restoreCommand.js'; // Importar la funci
 import { Logger } from './core/logger.js'; // Importar la clase Logger
 import { InteractiveModeManager } from './interactive/InteractiveModeManager.js'; // Importar el gestor del modo interactivo
 import { AppConfig, DEFAULT_APP_CONFIG } from './core/typeDefs.js'; // Importar AppConfig y DEFAULT_APP_CONFIG
+import { initializeSfdcApiLogger } from './core/sfdc-api.js';
+import { getDebugLogFilePath } from './core/configManager.js';
 
 const logger = new Logger('Main'); // Instanciar el logger
 
@@ -97,7 +99,8 @@ program
   .name('sfdc-data-copier')
   .description('Una herramienta CLI para mover datos entre organizaciones de Salesforce.')
   .version('1.0.0')
-  .addOption(new Option('-l, --loglevel <level>', 'Nivel de verbosidad del log (error, warn, info, http, verbose, debug, silly)').hideHelp());
+  .addOption(new Option('-l, --loglevel <level>', 'Nivel de verbosidad del log (error, warn, info, http, verbose, debug, silly)').hideHelp())
+  .option('--debug-log-file <path>', 'Ruta del archivo para el log de depuración de campos (por defecto: logs/copy-database.log)');
 
 program
   .command('extract')
@@ -289,24 +292,30 @@ program
   });
 
 // Lógica para iniciar el modo interactivo por defecto o parsear comandos
-if (process.argv.length <= 2 || (process.argv.length === 3 && process.argv[2] === 'interactive')) {
-  // Si no hay argumentos o el único argumento es 'interactive' (manejado por el comando de arriba)
-  // o si se llama directamente sin 'interactive' pero queremos que sea el comportamiento por defecto.
-  // Aquí, si es 'interactive', ya lo maneja el .command('interactive').
-  // Si no hay argumentos, también queremos el modo interactivo.
-  if (process.argv.length <= 2) {
+async function run() {
+  // Parsear los argumentos de la línea de comandos primero para obtener las opciones
+  program.parse(process.argv);
+  const cliOptions = program.opts();
+
+  // Obtener el nivel de log global actual
+  const globalLogLevel = logger.getLogLevel();
+
+  // Inicializar el logger de sfdc-api con la ruta de log de depuración y el nivel de log global
+  const debugLogPath = getDebugLogFilePath(cliOptions);
+  initializeSfdcApiLogger(debugLogPath, globalLogLevel);
+
+  // Si no se proporcionaron argumentos de comando (solo opciones globales), iniciar el modo interactivo por defecto.
+  if (!program.args.length) {
     const appConfig = await loadAppConfig(); // Cargar la configuración
     const interactiveMode = new InteractiveModeManager(appConfig); // Pasar la configuración
     interactiveMode.start().catch(error => {
       logger.error(`Error iniciando modo interactivo por defecto: ${error.message}`);
       process.exit(1);
     });
-  } else {
-    // Parsear los argumentos de la línea de comandos si hay comandos explícitos
-    // (esto incluye el caso 'interactive' que será capturado por su propio .action())
-    program.parse(process.argv);
   }
-} else {
-  // Parsear los argumentos de la línea de comandos si hay comandos explícitos
-  program.parse(process.argv);
 }
+
+run().catch(error => {
+  logger.error(`Error fatal en la aplicación: ${error.message}`);
+  process.exit(1);
+});

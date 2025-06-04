@@ -21,16 +21,14 @@ export class Logger {
   private winstonLogger: winston.Logger;
   private consoleTransport: winston.transports.ConsoleTransportInstance;
 
-  constructor(context: string = 'App') {
+  constructor(context: string = 'App', fileTransportPath?: string) {
     this.winstonLogger = winston.createLogger({
       level: 'info', // Nivel por defecto, se sobrescribirá
       format: combine(
         timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
         printf(({ level, message, timestamp }) => `${timestamp} [${context}] ${level.toUpperCase()}: ${message}`)
       ),
-      transports: [
-        new winston.transports.File({ filename: 'debug.log', level: 'info' }), // Nivel por defecto para archivo
-      ],
+      transports: [], // Inicialmente sin transportes de archivo fijos
     });
 
     // Transporte de consola
@@ -39,6 +37,11 @@ export class Logger {
       format: combine(colorize(), timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }), consoleFormat),
     });
     this.winstonLogger.add(this.consoleTransport);
+
+    // Si se proporciona una ruta de archivo en el constructor, añadir un transporte de archivo
+    if (fileTransportPath) {
+      this.addFileTransport(fileTransportPath, 'info'); // Nivel por defecto para archivo
+    }
   }
 
   public info(message: string, ...args: any[]): void {
@@ -76,5 +79,24 @@ export class Logger {
       this.consoleTransport.level = newLevel.toLowerCase();
     }
     this.winstonLogger.info(`Nivel de log establecido a: ${newLevel.toUpperCase()}`);
+  }
+
+  /**
+   * Obtiene el nivel de log actual del logger.
+   * @returns El nivel de log actual como string.
+   */
+  public getLogLevel(): string {
+    return this.winstonLogger.level;
+  }
+
+  /**
+   * Añade un transporte de archivo al logger.
+   * @param filePath La ruta del archivo de log.
+   * @param level El nivel de log para este transporte (ej. 'debug', 'info').
+   */
+  public addFileTransport(filePath: string, level: string = 'debug'): void {
+    const fileTransport = new winston.transports.File({ filename: filePath, level: level });
+    this.winstonLogger.add(fileTransport);
+    this.winstonLogger.info(`Transporte de archivo añadido: ${filePath} con nivel ${level.toUpperCase()}`);
   }
 }
